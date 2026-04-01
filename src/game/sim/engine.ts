@@ -19,6 +19,7 @@ import type {
   SimEvent,
   Team,
   GameSettings,
+  PlayerGameStats,
 } from "../types";
 import {
   BASKET_X_HOME,
@@ -105,6 +106,7 @@ export function createInitialSimState(
       hasBall: i === 0, // PG starts with ball
       speedFactor: speedFactorFromRating(ratings.speed),
       ratings,
+      fouls: 0,
     });
   });
 
@@ -120,7 +122,25 @@ export function createInitialSimState(
       hasBall: false,
       speedFactor: speedFactorFromRating(ratings.speed),
       ratings,
+      fouls: 0,
     });
+  });
+
+  // Initialise per-player stats record for every roster player
+  const playerStats: Record<string, PlayerGameStats> = {};
+  [...homeTeam.roster, ...awayTeam.roster].forEach((p) => {
+    playerStats[p.id] = {
+      points: 0,
+      fieldGoalsMade: 0,
+      fieldGoalsAttempted: 0,
+      threesMade: 0,
+      threesAttempted: 0,
+      freeThrowsMade: 0,
+      freeThrowsAttempted: 0,
+      rebounds: 0,
+      steals: 0,
+      fouls: 0,
+    };
   });
 
   const ballHandler = players[0];
@@ -133,6 +153,8 @@ export function createInitialSimState(
     gameClock: { remaining: settings.halfLength, half: 1, running: true },
     shotClock: { remaining: settings.shotClockLength, running: true },
     score: { home: 0, away: 0 },
+    teamFouls: { home: 0, away: 0 },
+    playerStats,
     shotInFlight: false,
     events: [],
   };
@@ -156,6 +178,24 @@ const MAX_SHORT_MIDRANGE_PROBABILITY = 0.65;
 const MIN_SHOT_PROBABILITY = 0.05;
 /** Additional probability penalty per foot beyond the deep-three threshold. */
 const DEEP_THREE_PENALTY_PER_FOOT = 0.01;
+
+// ── Free throw constants ──────────────────────────────────────────────────────
+
+/** Minimum free throw make rate (at shooting rating 0). */
+const MIN_FT_RATE = 0.55;
+/** Additional FT make rate contributed by shooting rating (linear, at rating 100). */
+const FT_RATING_FACTOR = 0.30;
+/** Hard cap on free throw make rate. */
+const MAX_FT_RATE = 0.85;
+
+// ── Foul constants ────────────────────────────────────────────────────────────
+
+/** Defender must be within this distance (ft) to risk a shooting foul. */
+const SHOOTING_FOUL_RANGE_FT = 4.5;
+/** Base foul chance when a shot is made and a defender is maximally close (and-1). */
+const AND_ONE_FOUL_BASE_CHANCE = 0.04;
+/** Base foul chance when a shot is missed and a defender is maximally close. */
+const MISSED_SHOT_FOUL_BASE_CHANCE = 0.11;
 
 /**
  * Convert a speed rating (0–100) into a speed factor.
@@ -321,6 +361,10 @@ export function tick(
     gameClock: { ...prev.gameClock },
     shotClock: { ...prev.shotClock },
     score: { ...prev.score },
+    teamFouls: { ...prev.teamFouls },
+    playerStats: Object.fromEntries(
+      Object.entries(prev.playerStats).map(([id, s]) => [id, { ...s }])
+    ),
     events: [],
   };
 
@@ -376,6 +420,8 @@ function tickClocks(ctx: TickContext): void {
         state.gameClock.half = 2;
         state.gameClock.remaining = settings.halfLength;
         state.shotClock.remaining = settings.shotClockLength;
+        // Reset team fouls for the new half
+        state.teamFouls = { home: 0, away: 0 };
         // Swap possession and hand the ball to the new team's first player
         const newHalfTeam: PossessionTeam =
           state.possession.team === "home" ? "away" : "home";
@@ -466,6 +512,44 @@ function attemptShot(ctx: TickContext, shooter: SimPlayer): void {
   _timeSinceLastAction = 0;
 }
 
+/**
+ * Resolve `count` free throw attempts for `shooter`.
+ * Free-throw percentage is derived from the shooter's shooting rating:
+ *   rating 0 → 55 %; rating 50 → 70 %; rating 100 → 85 %.
+ * Score and player stats are updated in place on `ctx.state`.
+ */
+function resolveFreeThrows(
+  ctx: TickContext,
+  shooter: SimPlayer,
+  count: number,
+  shootingTeam: PossessionTeam
+): void {
+  const { state } = ctx;
+  const ftRate = Math.min(MAX_FT_RATE, MIN_FT_RATE + (shooter.ratings.shooting / 100) * FT_RATING_FACTOR);
+
+  for (let i = 0; i < count; i++) {
+    const made = Math.random() < ftRate;
+    if (state.playerStats[shooter.id]) {
+      state.playerStats[shooter.id].freeThrowsAttempted += 1;
+      if (made) {
+        state.playerStats[shooter.id].freeThrowsMade += 1;
+        state.playerStats[shooter.id].points += 1;
+      }
+    }
+    if (made) {
+      if (shootingTeam === "home") state.score.home += 1;
+      else state.score.away += 1;
+    }
+    ctx.events.push({
+      type: made ? "free_throw_made" : "free_throw_missed",
+      playerId: shooter.id,
+      teamId: shootingTeam,
+      points: made ? 1 : 0,
+      message: made ? "Free throw good!" : "Free throw missed.",
+    });
+  }
+}
+
 function resolveShotInFlight(ctx: TickContext): void {
   const { state, dt, settings } = ctx;
   const target = state._shotTarget;
@@ -500,11 +584,13 @@ function resolveShotInFlight(ctx: TickContext): void {
     const shooterRating = shooter?.ratings.shooting ?? 65;
     let makeProb = baseMakeProb(shooterRating);
 
-    // Defensive contest: nearest defender within 10 ft reduces make probability
+    // Defensive contest: nearest defender within 10 ft reduces make probability.
+    // We also save nearestDef for foul detection below.
     const defTeam = state.possession.team === "home" ? "away" : "home";
     const defenders = state.players.filter((p) => p.teamId === defTeam);
+    let nearestDef: { player: SimPlayer; dist: number } | null = null;
     if (defenders.length > 0 && shooter) {
-      const nearestDef = defenders.reduce((best, d) => {
+      nearestDef = defenders.reduce((best, d) => {
         const dist = distance(d.position, shooter.position);
         return dist < best.dist ? { player: d, dist } : best;
       }, { player: defenders[0], dist: Infinity });
@@ -520,6 +606,7 @@ function resolveShotInFlight(ctx: TickContext): void {
 
     // 3-point detection: use origin distance to basket (not ball's current position)
     const shotDist = distance(origin, target);
+    const isThreePointer = shotDist > THREE_POINT_RADIUS;
 
     // Distance modifier: close-range shots go in at a higher clip; deep shots are harder.
     //   < 4 ft  (layup / dunk area):  +0.15
@@ -533,16 +620,96 @@ function resolveShotInFlight(ctx: TickContext): void {
       makeProb = Math.max(MIN_SHOT_PROBABILITY, makeProb - (shotDist - THREE_POINT_RADIUS - 4) * DEEP_THREE_PENALTY_PER_FOOT);
     }
 
+    // Track field-goal attempt in stats
+    if (shooter && state.playerStats[shooter.id]) {
+      state.playerStats[shooter.id].fieldGoalsAttempted += 1;
+      if (isThreePointer) state.playerStats[shooter.id].threesAttempted += 1;
+    }
+
     const made = Math.random() < makeProb;
+
+    // ── Shooting foul detection ─────────────────────────────────────────────
+    // A defender very close to the shooter (within FOUL_RANGE_FT) who still
+    // has personal fouls remaining has a chance to commit a shooting foul.
+    let isFouled = false;
+    let fouler: SimPlayer | undefined;
+    if (shooter && nearestDef && nearestDef.dist < SHOOTING_FOUL_RANGE_FT && nearestDef.player.fouls < 5) {
+      const proximity = 1 - nearestDef.dist / SHOOTING_FOUL_RANGE_FT;
+      // Fouls are more likely on contested close shots than on pull-up jumpers.
+      // And-1 fouls (made + foul) are intentionally rare.
+      const baseFoulChance = made ? AND_ONE_FOUL_BASE_CHANCE : MISSED_SHOT_FOUL_BASE_CHANCE;
+      const foulChance = baseFoulChance * (nearestDef.player.ratings.defense / 100) * proximity;
+      if (Math.random() < foulChance) {
+        isFouled = true;
+        fouler = nearestDef.player;
+      }
+    }
+
+    if (isFouled && fouler && shooter) {
+      // Commit the foul
+      fouler.fouls += 1;
+      const foulerTeam = fouler.teamId as PossessionTeam;
+      state.teamFouls[foulerTeam] += 1;
+      if (state.playerStats[fouler.id]) {
+        state.playerStats[fouler.id].fouls += 1;
+      }
+      ctx.events.push({
+        type: "foul",
+        playerId: fouler.id,
+        teamId: foulerTeam,
+        message: fouler.fouls >= 5 ? "Foul — player fouled out!" : "Shooting foul!",
+      });
+
+      if (made) {
+        // And-1: basket counts + 1 free throw
+        const pts = isThreePointer ? 3 : 2;
+        if (state.possession.team === "home") state.score.home += pts;
+        else state.score.away += pts;
+        if (state.playerStats[shooter.id]) {
+          state.playerStats[shooter.id].points += pts;
+          state.playerStats[shooter.id].fieldGoalsMade += 1;
+          if (isThreePointer) state.playerStats[shooter.id].threesMade += 1;
+        }
+        ctx.events.push({
+          type: "shot_made",
+          playerId: shooter.id,
+          teamId: state.possession.team,
+          points: pts,
+          message: `${pts}-pt AND ONE!`,
+        });
+        resolveFreeThrows(ctx, shooter, 1, state.possession.team);
+      } else {
+        // Missed shot + foul: award free throws (2 for 2-pt attempt, 3 for 3-pt attempt)
+        ctx.events.push({
+          type: "shot_missed",
+          teamId: state.possession.team,
+          message: "Shot missed — shooting foul!",
+        });
+        resolveFreeThrows(ctx, shooter, isThreePointer ? 3 : 2, state.possession.team);
+      }
+
+      // After FTs the defending team inbounds — treat as a possession change
+      changePossession(ctx);
+      state.shotClock.remaining = settings.shotClockLength;
+      return;
+    }
+
+    // ── No foul: normal shot resolution ─────────────────────────────────────
     if (made) {
-      const pts = shotDist > THREE_POINT_RADIUS ? 3 : 2;
+      const pts = isThreePointer ? 3 : 2;
       if (state.possession.team === "home") state.score.home += pts;
       else state.score.away += pts;
+      if (shooter && state.playerStats[shooter.id]) {
+        state.playerStats[shooter.id].points += pts;
+        state.playerStats[shooter.id].fieldGoalsMade += 1;
+        if (isThreePointer) state.playerStats[shooter.id].threesMade += 1;
+      }
       ctx.events.push({
         type: "shot_made",
-        message: `${pts}-point basket!`,
-        points: pts,
+        playerId: shooter?.id,
         teamId: state.possession.team,
+        points: pts,
+        message: `${pts}-point basket!`,
       });
       // Made basket → change possession, reset shot clock
       changePossession(ctx);
@@ -550,8 +717,8 @@ function resolveShotInFlight(ctx: TickContext): void {
     } else {
       ctx.events.push({
         type: "shot_missed",
-        message: "Shot missed!",
         teamId: state.possession.team,
+        message: "Shot missed!",
       });
       // Missed shot → contest the rebound
       resolveRebound(ctx, target);
@@ -588,6 +755,10 @@ function resolveRebound(ctx: TickContext, basketPos: CourtPosition): void {
   // Assign ball to rebounder
   state.players.forEach((p) => (p.hasBall = false));
   rebounder.hasBall = true;
+
+  if (state.playerStats[rebounder.id]) {
+    state.playerStats[rebounder.id].rebounds += 1;
+  }
 
   const isOffensiveRebound = rebounder.teamId === state.possession.team;
 
@@ -658,6 +829,10 @@ function executePass(ctx: TickContext, from: SimPlayer, to: SimPlayer): void {
         _timeSinceLastAction = 0;
         _timeSinceLastTargetAssign = 0;
         assignTargets(state.players, nearestDef.player.teamId as PossessionTeam, nearestDef.player.id);
+
+        if (state.playerStats[nearestDef.player.id]) {
+          state.playerStats[nearestDef.player.id].steals += 1;
+        }
 
         ctx.events.push({
           type: "steal",

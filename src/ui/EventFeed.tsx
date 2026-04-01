@@ -13,7 +13,7 @@ import { useGameStore } from "../store/gameStore";
 interface FeedEntry {
   id: number;
   message: string;
-  kind: "score" | "miss" | "turnover" | "info";
+  kind: "score" | "miss" | "turnover" | "info" | "foul";
   teamColor?: string;
 }
 
@@ -27,6 +27,7 @@ const KIND_STYLES: Record<FeedEntry["kind"], string> = {
   miss: "text-white/55",
   turnover: "text-amber-300",
   info: "text-sky-300",
+  foul: "text-orange-400",
 };
 
 export default function EventFeed() {
@@ -66,6 +67,22 @@ export default function EventFeed() {
           message: `${awayTeam.abbreviation} +${pts} (${state.score.away})`,
           kind: "score",
           teamColor: awayTeam.primaryColor,
+        });
+      }
+
+      // Team foul committed
+      if (state.teamFouls.home !== prev.teamFouls.home) {
+        newEntries.push({
+          id: _entryId++,
+          message: `${homeTeam.abbreviation} foul (${state.teamFouls.home})`,
+          kind: "foul",
+        });
+      }
+      if (state.teamFouls.away !== prev.teamFouls.away) {
+        newEntries.push({
+          id: _entryId++,
+          message: `${awayTeam.abbreviation} foul (${state.teamFouls.away})`,
+          kind: "foul",
         });
       }
 

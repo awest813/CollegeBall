@@ -20,6 +20,7 @@ import type {
   GameSettings,
   SimPlayer,
   CameraMode,
+  PlayerGameStats,
 } from "../game/types";
 import {
   defaultHomeTeam,
@@ -56,6 +57,10 @@ export interface GameStore {
   ballPosition: { x: number; y: number };
   ballHeight: number;
   shotInFlight: boolean;
+  /** Per-team foul count for the current half. */
+  teamFouls: { home: number; away: number };
+  /** Per-player game statistics accumulated across the full game. */
+  playerStats: Record<string, PlayerGameStats>;
 
   // ---- Actions ----
   /** Initialise a new exhibition game with default data. */
@@ -93,6 +98,8 @@ export const useGameStore = create<GameStore>((set) => ({
   ballPosition: { x: 0, y: 0 },
   ballHeight: 0,
   shotInFlight: false,
+  teamFouls: { home: 0, away: 0 },
+  playerStats: {},
 
   // Actions
   startExhibition: () =>
@@ -100,6 +107,8 @@ export const useGameStore = create<GameStore>((set) => ({
       screen: "game",
       simStatus: "running",
       score: { home: 0, away: 0 },
+      teamFouls: { home: 0, away: 0 },
+      playerStats: {},
       gameClock: {
         remaining: defaultGameSettings.halfLength,
         half: 1,
@@ -125,5 +134,7 @@ export const useGameStore = create<GameStore>((set) => ({
       ballPosition: state.ballPosition,
       ballHeight: state.ballHeight,
       shotInFlight: state.shotInFlight,
+      teamFouls: state.teamFouls,
+      playerStats: state.playerStats,
     }),
 }));

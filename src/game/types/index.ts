@@ -112,6 +112,22 @@ export interface SimPlayer {
   speedFactor: number;
   /** Player ratings copied from roster data for fast in-sim access. */
   ratings: PlayerRatings;
+  /** Personal fouls accumulated this game. Foul out at 5. */
+  fouls: number;
+}
+
+/** Per-player game statistics accumulated over the full game. */
+export interface PlayerGameStats {
+  points: number;
+  fieldGoalsMade: number;
+  fieldGoalsAttempted: number;
+  threesMade: number;
+  threesAttempted: number;
+  freeThrowsMade: number;
+  freeThrowsAttempted: number;
+  rebounds: number;
+  steals: number;
+  fouls: number;
 }
 
 /** The full snapshot produced by the simulation every tick. */
@@ -124,6 +140,10 @@ export interface SimulationState {
   gameClock: GameClock;
   shotClock: ShotClock;
   score: ScoreState;
+  /** Per-team foul count for the current half. Resets at halftime. */
+  teamFouls: { home: number; away: number };
+  /** Per-player game statistics accumulated across the full game. */
+  playerStats: Record<string, PlayerGameStats>;
   /** True while a shot is in the air. */
   shotInFlight: boolean;
   /** Internal: target basket position for an in-flight shot. */
@@ -148,7 +168,10 @@ export type SimEventType =
   | "possession_change"
   | "half_end"
   | "game_end"
-  | "shot_clock_violation";
+  | "shot_clock_violation"
+  | "foul"
+  | "free_throw_made"
+  | "free_throw_missed";
 
 export interface SimEvent {
   type: SimEventType;
