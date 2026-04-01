@@ -10,6 +10,13 @@
  * Procedural motion helpers produce simple mathematical approximations
  * (bob, lean, extend) that make primitive meshes feel alive until clips
  * are plugged in.
+ *
+ * GLB readiness:
+ *   • `blendIn` drives GLB AnimationGroup cross-fade weights (0 → 1 over
+ *     `getTransitionDuration(state)` seconds on every state change).
+ *   • `prevName` tells the GLB controller which clip to fade out.
+ *   • `shooterId` in PlayerAnimContext enables correct shoot-state entry
+ *     the moment a shot goes up, without relying on hasBall.
  */
 
 import type { SimPlayer, AnimationStateName } from "../types";
@@ -23,14 +30,58 @@ export type { AnimationStateName } from "../types";
 
 export interface AnimationState {
   name: AnimationStateName;
-  /** Elapsed seconds in the current state (reset on transition). */
+  /** Elapsed seconds in the current state (reset on every transition). */
   elapsed: number;
-  /** Blend weight — reserved for future clip blending (0–1). */
-  weight: number;
+  /**
+   * Blend-in weight for the current state: 0 immediately after a transition,
+   * ramping to 1 over `getTransitionDuration(name)` seconds.
+   * Used by GLB AnimationGroup cross-fading; also available for procedural
+   * motion blending if desired.
+   */
+  blendIn: number;
+  /**
+   * State being blended FROM during an active transition.
+   * Set to the previous state name on every state change; cleared (null) once
+   * `blendIn` reaches 1.  Used by the GLB controller to know which clip to
+   * fade out.
+   */
+  prevName: AnimationStateName | null;
 }
 
 export function makeIdleAnimState(): AnimationState {
-  return { name: "idle", elapsed: 0, weight: 1 };
+  return { name: "idle", elapsed: 0, blendIn: 1, prevName: null };
+}
+
+// ---------------------------------------------------------------------------
+// Transition durations
+// ---------------------------------------------------------------------------
+
+/**
+ * How long (seconds) the blend-in ramp takes when entering each state.
+ * Shorter for action states so they feel snappy; longer for locomotion.
+ */
+const TRANSITION_DURATIONS: Partial<Record<AnimationStateName, number>> = {
+  idle:             0.20,
+  jog:              0.18,
+  run:              0.15,
+  defensive_stance: 0.22,
+  shuffle:          0.18,
+  dribble_idle:     0.15,
+  pass:             0.08,
+  shoot:            0.06,
+  rebound:          0.10,
+  celebrate:        0.20,
+  transition:       0.20,
+};
+const DEFAULT_TRANSITION_DURATION = 0.15;
+
+/**
+ * Returns the blend-in duration in seconds when entering the given state.
+ * Used by GLB animation controllers to schedule cross-fades and by
+ * `tickAnimationState` to drive the `blendIn` ramp.
+ */
+export function getTransitionDuration(to: AnimationStateName): number {
+  return TRANSITION_DURATIONS[to] ?? DEFAULT_TRANSITION_DURATION;
 }
 
 // ---------------------------------------------------------------------------
@@ -44,57 +95,93 @@ export interface PlayerAnimContext {
   /** Computed movement speed in ft/s for the current frame. */
   speed: number;
   shotInFlight: boolean;
+  /**
+   * Player ID of the current shooter when a shot is in flight.
+   * Allows the resolver to enter `shoot` state the moment the ball leaves
+   * the shooter's hands, rather than relying on hasBall.
+   */
+  shooterId?: string;
 }
 
 // ---------------------------------------------------------------------------
 // Speed thresholds
 // ---------------------------------------------------------------------------
 
-const IDLE_THRESHOLD = 0.8; // ft/s — below this player is effectively still
-const JOG_THRESHOLD = 10; // ft/s — below this → jog, above → run
+const IDLE_THRESHOLD = 0.8; // ft/s — below this the player is effectively still
+const JOG_THRESHOLD  = 10;  // ft/s — below this → jog, above → run
 
 // ---------------------------------------------------------------------------
 // State resolution
 // ---------------------------------------------------------------------------
 
-/** Determine the desired AnimationStateName from the current context. */
+/**
+ * Determine the desired AnimationStateName from the current context.
+ *
+ * Priority order:
+ *   1. Shooter in-flight    → shoot
+ *   2. Shoot follow-through → shoot (hold for 0.45 s after ball leaves)
+ *   3. Ball carrier         → dribble_idle | jog | run
+ *   4. Defender             → defensive_stance | shuffle | run
+ *   5. Off-ball             → idle | jog | run
+ *
+ * Event-driven states (pass, rebound, celebrate) are injected as overrides
+ * in RenderBridge before this function is called, so they do not appear here.
+ */
 export function resolveAnimationState(
   ctx: PlayerAnimContext,
   current: AnimationState
 ): AnimationStateName {
-  // Hold shoot follow-through briefly after releasing the ball
+  // 1. Shooter: stay in shoot state while the shot is still in the air
+  if (ctx.shotInFlight && ctx.shooterId === ctx.simPlayer.id) {
+    return "shoot";
+  }
+
+  // 2. Follow-through: hold shoot state briefly after the ball has landed
   if (
     current.name === "shoot" &&
-    current.elapsed < 0.35 &&
-    !ctx.hasBall
+    current.elapsed < 0.45 &&
+    !ctx.hasBall &&
+    !ctx.shotInFlight
   ) {
     return "shoot";
   }
 
+  // 3. Ball carrier
   if (ctx.hasBall) {
     if (ctx.speed < IDLE_THRESHOLD) return "dribble_idle";
-    if (ctx.speed < JOG_THRESHOLD) return "jog";
+    if (ctx.speed < JOG_THRESHOLD)  return "jog";
     return "run";
   }
 
+  // 4. Defender (off-ball, opposing team)
   if (ctx.isDefending) {
     if (ctx.speed < IDLE_THRESHOLD) return "defensive_stance";
-    if (ctx.speed < JOG_THRESHOLD) return "shuffle";
+    if (ctx.speed < JOG_THRESHOLD)  return "shuffle";
     return "run";
   }
 
+  // 5. Off-ball team-mate
   if (ctx.speed < IDLE_THRESHOLD) return "idle";
-  if (ctx.speed < JOG_THRESHOLD) return "jog";
+  if (ctx.speed < JOG_THRESHOLD)  return "jog";
   return "run";
 }
 
 // ---------------------------------------------------------------------------
-// State tick (transition + elapsed time)
+// State tick  (transition + elapsed time + blend-in ramp)
 // ---------------------------------------------------------------------------
 
 /**
  * Advance the animation state by `dt` seconds.
- * Transitions are instant; real clip blending can be added here later.
+ *
+ * On a state change:
+ *   • `elapsed` resets to 0
+ *   • `blendIn` resets to 0 (will ramp to 1 over subsequent ticks)
+ *   • `prevName` records the outgoing state name for GLB cross-fade
+ *
+ * While the state is stable:
+ *   • `elapsed` increments
+ *   • `blendIn` ramps toward 1 based on `getTransitionDuration(name)`
+ *   • `prevName` is cleared once `blendIn` reaches 1
  */
 export function tickAnimationState(
   state: AnimationState,
@@ -102,18 +189,28 @@ export function tickAnimationState(
   dt: number
 ): AnimationState {
   if (state.name !== desired) {
-    return { name: desired, elapsed: 0, weight: 1 };
+    return { name: desired, elapsed: 0, blendIn: 0, prevName: state.name };
   }
-  return { ...state, elapsed: state.elapsed + dt };
+
+  const duration   = getTransitionDuration(state.name);
+  const newBlendIn = duration > 0 ? Math.min(state.blendIn + dt / duration, 1) : 1;
+  const newPrevName = newBlendIn >= 1 ? null : state.prevName;
+
+  return {
+    ...state,
+    elapsed:  state.elapsed + dt,
+    blendIn:  newBlendIn,
+    prevName: newPrevName,
+  };
 }
 
 // ---------------------------------------------------------------------------
-// Procedural motion helpers
+// Procedural motion helpers  (primitive-fallback path only)
 // ---------------------------------------------------------------------------
 
 /**
  * Vertical bob amount for the given animation state.
- * Used to offset the root transform each frame.
+ * Used to offset the root transform each frame (primitive meshes only).
  */
 export function getProceduralBob(state: AnimationState): number {
   const { name, elapsed } = state;
@@ -146,7 +243,7 @@ export function getProceduralBob(state: AnimationState): number {
 
 /**
  * Returns the procedural arm-raise ratio for shoot/pass states (0–1).
- * The head mesh is offset upward by this amount.
+ * The head mesh is offset upward by this amount (primitive meshes only).
  */
 export function getArmRaise(state: AnimationState): number {
   switch (state.name) {
@@ -161,7 +258,7 @@ export function getArmRaise(state: AnimationState): number {
 
 /**
  * Returns a lateral lean in radians for locomotion states.
- * Gives a subtle side-to-side sway while moving.
+ * Gives a subtle side-to-side sway while moving (primitive meshes only).
  */
 export function getProceduralLean(state: AnimationState): number {
   switch (state.name) {
