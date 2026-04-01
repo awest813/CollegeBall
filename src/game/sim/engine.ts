@@ -535,7 +535,7 @@ function tickClocks(ctx: TickContext): void {
 }
 
 function tickBallHandler(ctx: TickContext): void {
-  const { state, dt, settings } = ctx;
+  const { state, dt } = ctx;
   const handler = state.players.find((p) => p.id === state.possession.ballHandlerId);
   if (!handler) return;
 

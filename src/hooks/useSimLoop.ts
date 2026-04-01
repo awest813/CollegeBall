@@ -61,6 +61,16 @@ export function useSimLoop(): SimLoopController {
     (dtMs: number) => {
       if (simStatus !== "running" || !stateRef.current) return;
 
+      // `useEffect` can run after the first post-"Play Again" render frame. If we still
+      // hold the previous game's ended snapshot, re-init here so the sim never ticks
+      // a finished match or flashes stale FINAL/score state.
+      if (!stateRef.current.gameClock.running) {
+        resetSimEngine();
+        accumulatorRef.current = 0;
+        stateRef.current = createInitialSimState(homeTeam, awayTeam, settings);
+        applySimState(stateRef.current);
+      }
+
       const dtScaled = (dtMs / 1000) * gameSpeed;
       accumulatorRef.current += dtScaled;
 
@@ -82,7 +92,7 @@ export function useSimLoop(): SimLoopController {
         applySimState(stateRef.current);
       }
     },
-    [simStatus, gameSpeed, settings, applySimState]
+    [simStatus, gameSpeed, homeTeam, awayTeam, settings, applySimState]
   );
 
   const getState = useCallback(() => stateRef.current, []);

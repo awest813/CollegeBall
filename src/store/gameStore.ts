@@ -122,6 +122,10 @@ export const useGameStore = create<GameStore>((set) => ({
         team: "home",
         ballHandlerId: defaultHomeTeam.lineup[0],
       },
+      simPlayers: [],
+      ballPosition: { x: 0, y: 0 },
+      ballHeight: 3.5,
+      shotInFlight: false,
     }),
 
   applySimState: (state) =>
