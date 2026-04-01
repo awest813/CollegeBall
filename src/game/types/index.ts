@@ -108,8 +108,10 @@ export interface SimPlayer {
   position: CourtPosition;
   targetPosition: CourtPosition;
   hasBall: boolean;
-  /** Speed multiplier for this tick (0–1). */
+  /** Speed multiplier for this tick (0–1+). Derived from the player's speed rating. */
   speedFactor: number;
+  /** Player ratings copied from roster data for fast in-sim access. */
+  ratings: PlayerRatings;
 }
 
 /** The full snapshot produced by the simulation every tick. */
@@ -124,10 +126,14 @@ export interface SimulationState {
   score: ScoreState;
   /** True while a shot is in the air. */
   shotInFlight: boolean;
-  /** Internal: target position for an in-flight shot. */
+  /** Internal: target basket position for an in-flight shot. */
   _shotTarget?: CourtPosition;
   /** Internal: remaining flight time for a shot. */
   _shotTimer?: number;
+  /** Internal: court position where the shot was released (for arc and 3-pt detection). */
+  _shotOrigin?: CourtPosition;
+  /** Internal: player ID of the shooter (for rating-based resolution). */
+  _shooterId?: string;
   /** Event log for the current tick (e.g. "shot_made", "turnover"). */
   events: SimEvent[];
 }
@@ -137,6 +143,8 @@ export type SimEventType =
   | "shot_missed"
   | "pass"
   | "turnover"
+  | "steal"
+  | "rebound"
   | "possession_change"
   | "half_end"
   | "game_end"
