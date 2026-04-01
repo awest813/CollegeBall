@@ -179,11 +179,11 @@ export default function EventFeed() {
   if (entries.length === 0) return null;
 
   return (
-    <div className="absolute top-[72px] right-4 z-20 select-none flex flex-col gap-1 items-end">
+    <div className="absolute right-4 top-[88px] z-20 flex select-none flex-col items-end gap-1.5">
       {entries.map((e, i) => (
         <div
           key={e.id}
-          className={`text-xs px-3 py-1 rounded-lg shadow-md backdrop-blur-sm transition-all ${KIND_STYLES[e.kind]}`}
+          className={`rounded-xl px-3 py-1.5 text-xs shadow-md backdrop-blur-sm transition-all ${KIND_STYLES[e.kind]}`}
           style={{
             background: "rgba(6,6,12,0.82)",
             borderColor: e.kind === "score" ? (e.teamColor ?? "white") : "transparent",

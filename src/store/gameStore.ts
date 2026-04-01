@@ -33,6 +33,11 @@ export interface GameStore {
   // ---- Navigation ----
   screen: Screen;
   setScreen: (s: Screen) => void;
+  isPauseMenuOpen: boolean;
+  openPauseMenu: () => void;
+  closePauseMenu: () => void;
+  togglePauseMenu: () => void;
+  returnToMainMenu: () => void;
 
   // ---- Teams ----
   homeTeam: Team;
@@ -76,6 +81,61 @@ export const useGameStore = create<GameStore>((set) => ({
   // Navigation
   screen: "menu",
   setScreen: (screen) => set({ screen }),
+  isPauseMenuOpen: false,
+  openPauseMenu: () =>
+    set((state) => ({
+      isPauseMenuOpen: state.simStatus !== "finished",
+      simStatus: state.simStatus === "running" ? "paused" : state.simStatus,
+    })),
+  closePauseMenu: () =>
+    set((state) => ({
+      isPauseMenuOpen: false,
+      simStatus: state.simStatus === "paused" ? "running" : state.simStatus,
+    })),
+  togglePauseMenu: () =>
+    set((state) => {
+      if (state.simStatus !== "running" && state.simStatus !== "paused") {
+        return state;
+      }
+
+      const nextOpen = !state.isPauseMenuOpen;
+      return {
+        isPauseMenuOpen: nextOpen,
+        simStatus:
+          state.simStatus === "running" && nextOpen
+            ? "paused"
+            : state.simStatus === "paused" && !nextOpen
+            ? "running"
+            : state.simStatus,
+      };
+    }),
+  returnToMainMenu: () =>
+    set({
+      screen: "menu",
+      simStatus: "idle",
+      isPauseMenuOpen: false,
+      score: { home: 0, away: 0 },
+      teamFouls: { home: 0, away: 0 },
+      playerStats: {},
+      phase: "PRE_GAME" as MatchPhase,
+      gameClock: {
+        remaining: defaultGameSettings.halfLength,
+        half: 1,
+        running: false,
+      },
+      shotClock: {
+        remaining: defaultGameSettings.shotClockLength,
+        running: false,
+      },
+      possession: {
+        team: "home",
+        ballHandlerId: defaultHomeTeam.lineup[0],
+      },
+      simPlayers: [],
+      ballPosition: { x: 0, y: 0 },
+      ballHeight: 0,
+      shotInFlight: false,
+    }),
 
   // Teams
   homeTeam: defaultHomeTeam,
@@ -110,6 +170,7 @@ export const useGameStore = create<GameStore>((set) => ({
     set({
       screen: "game",
       simStatus: "running",
+      isPauseMenuOpen: false,
       score: { home: 0, away: 0 },
       teamFouls: { home: 0, away: 0 },
       playerStats: {},

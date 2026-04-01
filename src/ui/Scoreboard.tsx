@@ -62,9 +62,9 @@ export default function Scoreboard() {
   const awayBonusLabel = bonusLabel(teamFouls.home);
 
   return (
-    <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 select-none">
+    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 select-none px-4">
       <div
-        className="flex items-stretch rounded-xl overflow-hidden shadow-2xl"
+        className="flex items-stretch overflow-hidden rounded-2xl shadow-2xl backdrop-blur-md"
         style={{ border: "1px solid rgba(255,255,255,0.12)" }}
       >
         {/* ── Home team ──────────────────────────────── */}
@@ -80,7 +80,7 @@ export default function Scoreboard() {
 
         {/* ── Centre: clocks ─────────────────────────── */}
         <div
-          className="flex flex-col items-center justify-center px-5 py-2 min-w-[118px]"
+          className="flex min-w-[118px] flex-col items-center justify-center px-5 py-2.5"
           style={{ background: "rgba(10,10,16,0.92)" }}
         >
           {/* Game clock */}

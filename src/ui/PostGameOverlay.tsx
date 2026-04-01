@@ -16,7 +16,7 @@ export default function PostGameOverlay() {
   const awayTeam = useGameStore((s) => s.awayTeam);
   const playerStats = useGameStore((s) => s.playerStats);
   const startExhibition = useGameStore((s) => s.startExhibition);
-  const setScreen = useGameStore((s) => s.setScreen);
+  const returnToMainMenu = useGameStore((s) => s.returnToMainMenu);
 
   if (simStatus !== "finished") return null;
 
@@ -111,7 +111,7 @@ export default function PostGameOverlay() {
           Play Again
         </button>
         <button
-          onClick={() => setScreen("menu")}
+          onClick={returnToMainMenu}
           className="bg-white/10 hover:bg-white/20 active:scale-95 text-white font-semibold px-8 py-3 rounded-xl transition-all text-sm tracking-wide"
           style={{ border: "1px solid rgba(255,255,255,0.15)" }}
         >
