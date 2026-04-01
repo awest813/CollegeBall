@@ -129,6 +129,28 @@ export default function EventFeed() {
         });
       }
 
+      // Halftime (clock advanced in sim between halves)
+      if (
+        prev.gameClock.half === 1 &&
+        state.gameClock.half === 2 &&
+        state.gameClock.running
+      ) {
+        newEntries.push({
+          id: _entryId++,
+          message: "End of 1st half",
+          kind: "info",
+        });
+      }
+
+      // Game over (overlay will also show; this keeps the feed consistent)
+      if (state.simStatus === "finished" && prev.simStatus !== "finished") {
+        newEntries.push({
+          id: _entryId++,
+          message: "Final buzzer — game over",
+          kind: "info",
+        });
+      }
+
       // Substitution: detect when a player on court is replaced
       if (state.simPlayers.length === prev.simPlayers.length) {
         const prevIds = new Set(prev.simPlayers.map((p) => p.id));

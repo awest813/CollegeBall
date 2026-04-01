@@ -32,8 +32,9 @@ export default function Scoreboard() {
   const teamFouls = useGameStore((s) => s.teamFouls);
   const settings = useGameStore((s) => s.settings);
 
-  const shotClockUrgent = shotClock.remaining <= 5 && shotClock.running;
   const isFinished = simStatus === "finished";
+  const shotClockUrgent =
+    !isFinished && shotClock.remaining <= 5 && shotClock.running;
 
   // Bonus status is determined by the *opponent's* foul count
   // (home team fouls put away team in bonus, and vice versa)
@@ -69,23 +70,25 @@ export default function Scoreboard() {
         >
           {/* Game clock */}
           <span className="text-white font-mono text-2xl font-black tracking-tight leading-none">
-            {formatTime(gameClock.remaining)}
+            {isFinished ? "0:00" : formatTime(gameClock.remaining)}
           </span>
 
           {/* Half label */}
           <span className="text-gray-400 text-[10px] font-semibold tracking-widest uppercase mt-0.5">
-            {gameClock.half === 1 ? "1st Half" : "2nd Half"}
+            {isFinished ? "Final" : gameClock.half === 1 ? "1st Half" : "2nd Half"}
           </span>
 
           {/* Shot clock */}
           <div
             className={`mt-1 px-2 py-0.5 rounded font-mono text-sm font-bold leading-none ${
-              shotClockUrgent
-                ? "bg-red-600 text-white"
-                : "bg-white/10 text-yellow-300"
+              isFinished
+                ? "bg-white/5 text-white/35"
+                : shotClockUrgent
+                  ? "bg-red-600 text-white"
+                  : "bg-white/10 text-yellow-300"
             }`}
           >
-            {Math.ceil(shotClock.remaining)}
+            {isFinished ? "—" : Math.ceil(shotClock.remaining)}
           </div>
 
           {isFinished && (
