@@ -31,6 +31,11 @@ export default function BabylonCanvas({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<Engine | null>(null);
 
+  // Keep a ref to the latest onRender so the render loop always calls the
+  // current version even though the render loop closure is only created once.
+  const onRenderRef = useRef(onRender);
+  onRenderRef.current = onRender;
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return undefined;
@@ -48,7 +53,7 @@ export default function BabylonCanvas({
 
     // --- Render loop ---
     engine.runRenderLoop(() => {
-      onRender?.(scene);
+      onRenderRef.current?.(scene);
       scene.render();
     });
 

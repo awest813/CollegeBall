@@ -38,12 +38,19 @@ export function useSimLoop(): SimLoopController {
   const settings = useGameStore((s) => s.settings);
   const applySimState = useGameStore((s) => s.applySimState);
 
-  // Initialise sim state when game starts
+  // Initialise (or re-initialise) sim state when a game starts or restarts.
+  // A restart is detected when simStatus becomes "running" while the previous
+  // game's clock has already stopped (Play Again after a finished game).
   useEffect(() => {
-    if (simStatus === "running" && stateRef.current === null) {
-      resetSimEngine();
-      stateRef.current = createInitialSimState(homeTeam, awayTeam, settings);
-      applySimState(stateRef.current);
+    if (simStatus === "running") {
+      const needsInit =
+        stateRef.current === null || !stateRef.current.gameClock.running;
+      if (needsInit) {
+        resetSimEngine();
+        accumulatorRef.current = 0;
+        stateRef.current = createInitialSimState(homeTeam, awayTeam, settings);
+        applySimState(stateRef.current);
+      }
     }
     if (simStatus === "idle") {
       stateRef.current = null;
