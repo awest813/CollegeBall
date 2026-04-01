@@ -34,6 +34,7 @@ function makePlayers(
       passing: 50 + Math.floor(Math.random() * 30),
       defense: 50 + Math.floor(Math.random() * 30),
       rebounding: 50 + Math.floor(Math.random() * 30),
+      endurance: 50 + Math.floor(Math.random() * 30),
     },
   }));
 }
@@ -91,4 +92,7 @@ export const defaultAwayTeam: Team = {
 export const defaultGameSettings: GameSettings = {
   halfLength: 20 * 60, // 20 minutes per half
   shotClockLength: 30, // NCAA men's shot clock
+  bonusFoulThreshold: 7, // one-and-one starts at 7 team fouls
+  doubleBonusThreshold: 10, // double bonus at 10 team fouls
+  subStaminaThreshold: 25, // sub out players below 25% stamina
 };

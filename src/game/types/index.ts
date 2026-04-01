@@ -34,6 +34,7 @@ export interface PlayerRatings {
   passing: number; // 0–100
   defense: number; // 0–100
   rebounding: number; // 0–100
+  endurance: number; // 0–100: how quickly stamina drains
 }
 
 export interface Player {
@@ -114,6 +115,8 @@ export interface SimPlayer {
   ratings: PlayerRatings;
   /** Personal fouls accumulated this game. Foul out at 5. */
   fouls: number;
+  /** Current stamina (0–100). Drains during play; low stamina penalises speed/shooting. */
+  stamina: number;
 }
 
 /** Per-player game statistics accumulated over the full game. */
@@ -126,13 +129,18 @@ export interface PlayerGameStats {
   freeThrowsMade: number;
   freeThrowsAttempted: number;
   rebounds: number;
+  assists: number;
   steals: number;
   fouls: number;
+  /** Minutes on the court this game (tracked from game-clock time). */
+  minutesPlayed: number;
 }
 
 /** The full snapshot produced by the simulation every tick. */
 export interface SimulationState {
   players: SimPlayer[];
+  /** Players on the bench (not currently on court), per team. */
+  bench: SimPlayer[];
   ballPosition: CourtPosition;
   /** Height of the ball above the court (for arcs, shots, etc.). */
   ballHeight: number;
@@ -154,6 +162,8 @@ export interface SimulationState {
   _shotOrigin?: CourtPosition;
   /** Internal: player ID of the shooter (for rating-based resolution). */
   _shooterId?: string;
+  /** Internal: ID of the player who last completed a pass (for assist attribution). */
+  _lastPassFromId?: string;
   /** Event log for the current tick (e.g. "shot_made", "turnover"). */
   events: SimEvent[];
 }
@@ -170,6 +180,8 @@ export type SimEventType =
   | "game_end"
   | "shot_clock_violation"
   | "foul"
+  | "non_shooting_foul"
+  | "substitution"
   | "free_throw_made"
   | "free_throw_missed";
 
@@ -194,6 +206,12 @@ export type SimStatus = "idle" | "running" | "paused" | "finished";
 export interface GameSettings {
   halfLength: number; // seconds per half
   shotClockLength: number; // seconds
+  /** Team foul count at which the opponent earns one-and-one free throws (NCAA: 7). */
+  bonusFoulThreshold: number;
+  /** Team foul count at which the opponent earns automatic two free throws (NCAA: 10). */
+  doubleBonusThreshold: number;
+  /** Stamina below this value triggers an automatic substitution (0–100). */
+  subStaminaThreshold: number;
 }
 
 // ---------------------------------------------------------------------------

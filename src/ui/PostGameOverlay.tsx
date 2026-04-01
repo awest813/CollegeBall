@@ -191,10 +191,18 @@ function fgStr(made: number, attempted: number): string {
 }
 
 function BoxScore({ team, playerStats, primaryColor }: BoxScoreProps) {
-  // Show only players in the starting lineup
+  // Show starters + any bench players who logged minutes (via substitution)
+  const lineupIds = new Set(team.lineup);
   const lineupPlayers = team.lineup
     .map((id) => team.roster.find((p) => p.id === id))
     .filter((p): p is NonNullable<typeof p> => p !== undefined);
+
+  const benchPlayers = team.roster
+    .filter((p) => !lineupIds.has(p.id))
+    .filter((p) => (playerStats[p.id]?.minutesPlayed ?? 0) > 0)
+    .sort((a, b) => (playerStats[b.id]?.minutesPlayed ?? 0) - (playerStats[a.id]?.minutesPlayed ?? 0));
+
+  const allPlayers = [...lineupPlayers, ...benchPlayers];
 
   const COL = "px-2 py-1.5 text-center text-[11px] font-mono";
   const HDR = `${COL} text-gray-500 font-semibold tracking-wider`;
@@ -222,17 +230,19 @@ function BoxScore({ team, playerStats, primaryColor }: BoxScoreProps) {
             <th className={HDR}>3PM</th>
             <th className={HDR}>FT</th>
             <th className={HDR}>REB</th>
+            <th className={HDR}>AST</th>
             <th className={HDR}>STL</th>
             <th className={HDR}>PF</th>
           </tr>
         </thead>
         <tbody>
-          {lineupPlayers.map((p) => {
+          {allPlayers.map((p) => {
             const s: PlayerGameStats = playerStats[p.id] ?? {
               points: 0, fieldGoalsMade: 0, fieldGoalsAttempted: 0,
               threesMade: 0, threesAttempted: 0, freeThrowsMade: 0,
-              freeThrowsAttempted: 0, rebounds: 0, steals: 0, fouls: 0,
+              freeThrowsAttempted: 0, rebounds: 0, assists: 0, steals: 0, fouls: 0, minutesPlayed: 0,
             };
+            const isBench = !lineupIds.has(p.id);
             return (
               <tr
                 key={p.id}
@@ -240,7 +250,7 @@ function BoxScore({ team, playerStats, primaryColor }: BoxScoreProps) {
               >
                 <td className="px-3 py-1.5 text-left">
                   <span className="text-gray-500 text-[10px] font-mono mr-1.5">#{p.number}</span>
-                  <span className="text-white text-[11px] font-semibold">
+                  <span className={`text-[11px] font-semibold ${isBench ? "text-white/60" : "text-white"}`}>
                     {p.firstName[0]}. {p.lastName}
                   </span>
                 </td>
@@ -249,6 +259,7 @@ function BoxScore({ team, playerStats, primaryColor }: BoxScoreProps) {
                 <td className={`${COL} text-gray-300`}>{fgStr(s.threesMade, s.threesAttempted)}</td>
                 <td className={`${COL} text-gray-300`}>{fgStr(s.freeThrowsMade, s.freeThrowsAttempted)}</td>
                 <td className={`${COL} text-gray-300`}>{s.rebounds}</td>
+                <td className={`${COL} text-gray-300`}>{s.assists}</td>
                 <td className={`${COL} text-gray-300`}>{s.steals}</td>
                 <td className={`${COL} ${s.fouls >= 5 ? "text-red-400" : "text-gray-300"}`}>{s.fouls}</td>
               </tr>
