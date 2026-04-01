@@ -90,10 +90,10 @@ export function createInitialSimState(
   const players: SimPlayer[] = [];
   const bench: SimPlayer[] = [];
 
-  // Build a lookup from player ID → ratings for quick access
-  const ratingsMap = new Map(
-    [...homeTeam.roster, ...awayTeam.roster].map((p) => [p.id, p.ratings])
-  );
+  // Build lookups from player ID → ratings and jerseyNumber for quick access
+  const allRosterPlayers = [...homeTeam.roster, ...awayTeam.roster];
+  const ratingsMap = new Map(allRosterPlayers.map((p) => [p.id, p.ratings]));
+  const jerseyMap = new Map(allRosterPlayers.map((p) => [p.id, p.number]));
 
   const defaultRatings = { speed: 60, shooting: 60, passing: 60, defense: 60, rebounding: 60, endurance: 60 };
 
@@ -104,6 +104,7 @@ export function createInitialSimState(
     players.push({
       id,
       teamId: homeTeam.id,
+      jerseyNumber: jerseyMap.get(id) ?? 0,
       position: { ...pos },
       targetPosition: { ...pos },
       hasBall: i === 0, // PG starts with ball
@@ -122,6 +123,7 @@ export function createInitialSimState(
       bench.push({
         id: p.id,
         teamId: homeTeam.id,
+        jerseyNumber: p.number,
         position: { x: -47, y: 0 },
         targetPosition: { x: -47, y: 0 },
         hasBall: false,
@@ -139,6 +141,7 @@ export function createInitialSimState(
     players.push({
       id,
       teamId: awayTeam.id,
+      jerseyNumber: jerseyMap.get(id) ?? 0,
       position: { ...pos },
       targetPosition: { ...pos },
       hasBall: false,
@@ -157,6 +160,7 @@ export function createInitialSimState(
       bench.push({
         id: p.id,
         teamId: awayTeam.id,
+        jerseyNumber: p.number,
         position: { x: 47, y: 0 },
         targetPosition: { x: 47, y: 0 },
         hasBall: false,
@@ -520,7 +524,9 @@ function tickClocks(ctx: TickContext): void {
 
   if (state.shotClock.running) {
     state.shotClock.remaining = Math.max(0, state.shotClock.remaining - dt);
-    if (state.shotClock.remaining <= 0) {
+    // Do not call a violation while a shot is already in the air — the ball
+    // was released before the clock expired and will resolve normally.
+    if (state.shotClock.remaining <= 0 && !state.shotInFlight) {
       // Shot clock violation — turnover
       ctx.events.push({ type: "shot_clock_violation", message: "Shot clock violation!" });
       changePossession(ctx);
@@ -1201,7 +1207,7 @@ function tickSubstitutions(ctx: TickContext): void {
       type: "substitution",
       playerId: sub.id,
       teamId: sub.teamId,
-      message: `Sub: #${sub.id} in for #${tired.id} (${reason})`,
+      message: `Sub: #${sub.jerseyNumber} in for #${tired.jerseyNumber} (${reason})`,
     });
 
     // Re-assign targets after the lineup change

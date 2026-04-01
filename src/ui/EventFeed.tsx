@@ -45,6 +45,16 @@ export default function EventFeed() {
     return unsub;
   }, []);
 
+  // Clear the feed whenever a new game starts so stale entries don't linger.
+  useEffect(() => {
+    const unsub = useGameStore.subscribe((state, prev) => {
+      if (state.simStatus === "running" && prev.simStatus !== "running") {
+        setEntries([]);
+      }
+    });
+    return unsub;
+  }, []);
+
   useEffect(() => {
     const unsub = useGameStore.subscribe((state, prev) => {
       const homeTeam = homeTeamRef.current;
@@ -87,7 +97,7 @@ export default function EventFeed() {
         });
       }
 
-      // Possession change with no score → turnover / rebound
+      // Possession change with no score → turnover / defensive rebound
       if (
         state.possession.team !== prev.possession.team &&
         state.score.home === prev.score.home &&
@@ -99,6 +109,23 @@ export default function EventFeed() {
           id: _entryId++,
           message: `${team.abbreviation} ball`,
           kind: "turnover",
+        });
+      }
+
+      // Shot resolved without score/possession change → offensive rebound
+      if (
+        !state.shotInFlight &&
+        prev.shotInFlight &&
+        state.score.home === prev.score.home &&
+        state.score.away === prev.score.away &&
+        state.possession.team === prev.possession.team
+      ) {
+        const team =
+          state.possession.team === "home" ? homeTeam : awayTeam;
+        newEntries.push({
+          id: _entryId++,
+          message: `${team.abbreviation} off. rebound`,
+          kind: "miss",
         });
       }
 

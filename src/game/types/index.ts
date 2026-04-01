@@ -106,6 +106,8 @@ export interface Possession {
 export interface SimPlayer {
   id: string;
   teamId: string;
+  /** Jersey number from the roster — used for display purposes (e.g. sub messages). */
+  jerseyNumber: number;
   position: CourtPosition;
   targetPosition: CourtPosition;
   hasBall: boolean;
