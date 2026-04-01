@@ -29,6 +29,7 @@ export default function Scoreboard() {
   const homeTeam = useGameStore((s) => s.homeTeam);
   const awayTeam = useGameStore((s) => s.awayTeam);
   const simStatus = useGameStore((s) => s.simStatus);
+  const teamFouls = useGameStore((s) => s.teamFouls);
 
   const shotClockUrgent = shotClock.remaining <= 5 && shotClock.running;
   const isFinished = simStatus === "finished";
@@ -46,6 +47,7 @@ export default function Scoreboard() {
           primaryColor={homeTeam.primaryColor}
           hasPossession={possession.team === "home"}
           possessionSide="right"
+          fouls={teamFouls.home}
         />
 
         {/* ── Centre: clocks ─────────────────────────── */}
@@ -88,6 +90,7 @@ export default function Scoreboard() {
           primaryColor={awayTeam.primaryColor}
           hasPossession={possession.team === "away"}
           possessionSide="left"
+          fouls={teamFouls.away}
         />
       </div>
     </div>
@@ -104,6 +107,7 @@ interface TeamPanelProps {
   primaryColor: string;
   hasPossession: boolean;
   possessionSide: "left" | "right";
+  fouls: number;
 }
 
 function TeamPanel({
@@ -112,6 +116,7 @@ function TeamPanel({
   primaryColor,
   hasPossession,
   possessionSide,
+  fouls,
 }: TeamPanelProps) {
   const isRight = possessionSide === "right";
 
@@ -122,9 +127,14 @@ function TeamPanel({
     >
       {/* Colour swatch + abbreviation (home side: swatch left; away side: score left) */}
       {!isRight && (
-        <span className="text-white font-mono text-3xl font-black w-9 text-center">
-          {score}
-        </span>
+        <div className="flex flex-col items-center">
+          <span className="text-white font-mono text-3xl font-black w-9 text-center leading-none">
+            {score}
+          </span>
+          <span className="text-gray-500 text-[9px] font-semibold tracking-wider mt-1">
+            {fouls} PF
+          </span>
+        </div>
       )}
 
       <div className="flex items-center gap-2">
@@ -142,9 +152,14 @@ function TeamPanel({
       </div>
 
       {isRight && (
-        <span className="text-white font-mono text-3xl font-black w-9 text-center">
-          {score}
-        </span>
+        <div className="flex flex-col items-center">
+          <span className="text-white font-mono text-3xl font-black w-9 text-center leading-none">
+            {score}
+          </span>
+          <span className="text-gray-500 text-[9px] font-semibold tracking-wider mt-1">
+            {fouls} PF
+          </span>
+        </div>
       )}
 
       {/* Possession dot / arrow */}

@@ -2,16 +2,19 @@
  * PostGameOverlay – full-screen end-of-game summary.
  *
  * Appears when simStatus === "finished". Shows the final score, winner
- * highlight, and buttons to play again or return to the main menu.
+ * highlight, per-player box score, and buttons to play again or return
+ * to the main menu.
  */
 
 import { useGameStore } from "../store/gameStore";
+import type { PlayerGameStats, Team } from "../game/types";
 
 export default function PostGameOverlay() {
   const simStatus = useGameStore((s) => s.simStatus);
   const score = useGameStore((s) => s.score);
   const homeTeam = useGameStore((s) => s.homeTeam);
   const awayTeam = useGameStore((s) => s.awayTeam);
+  const playerStats = useGameStore((s) => s.playerStats);
   const startExhibition = useGameStore((s) => s.startExhibition);
   const setScreen = useGameStore((s) => s.setScreen);
 
@@ -30,8 +33,8 @@ export default function PostGameOverlay() {
 
   return (
     <div
-      className="absolute inset-0 z-30 flex flex-col items-center justify-center select-none"
-      style={{ background: "rgba(4,4,10,0.88)", backdropFilter: "blur(6px)" }}
+      className="absolute inset-0 z-30 flex flex-col items-center justify-center select-none overflow-y-auto py-6"
+      style={{ background: "rgba(4,4,10,0.92)", backdropFilter: "blur(6px)" }}
     >
       {/* Result header */}
       <p className="text-gray-400 text-sm font-semibold tracking-widest uppercase mb-3">
@@ -40,7 +43,7 @@ export default function PostGameOverlay() {
 
       {/* Score card */}
       <div
-        className="flex items-stretch rounded-2xl overflow-hidden shadow-2xl mb-8"
+        className="flex items-stretch rounded-2xl overflow-hidden shadow-2xl mb-4"
         style={{ border: "1px solid rgba(255,255,255,0.1)" }}
       >
         {/* Home team */}
@@ -73,17 +76,31 @@ export default function PostGameOverlay() {
       {/* Winner banner */}
       {!isTie && (
         <p
-          className="text-lg font-extrabold tracking-wide mb-8"
+          className="text-lg font-extrabold tracking-wide mb-5"
           style={{ color: winnerColor }}
         >
           {winnerName} wins!
         </p>
       )}
       {isTie && (
-        <p className="text-lg font-extrabold tracking-wide text-gray-400 mb-8">
+        <p className="text-lg font-extrabold tracking-wide text-gray-400 mb-5">
           It&apos;s a tie!
         </p>
       )}
+
+      {/* Box score */}
+      <div className="w-full max-w-3xl px-4 mb-6 flex flex-col gap-4">
+        <BoxScore
+          team={homeTeam}
+          playerStats={playerStats}
+          primaryColor={homeTeam.primaryColor}
+        />
+        <BoxScore
+          team={awayTeam}
+          playerStats={playerStats}
+          primaryColor={awayTeam.primaryColor}
+        />
+      </div>
 
       {/* Action buttons */}
       <div className="flex gap-4">
@@ -155,6 +172,90 @@ function TeamResult({
       >
         {name}
       </span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sub-component: per-team box score table
+// ---------------------------------------------------------------------------
+
+interface BoxScoreProps {
+  team: Team;
+  playerStats: Record<string, PlayerGameStats>;
+  primaryColor: string;
+}
+
+function fgStr(made: number, attempted: number): string {
+  return attempted > 0 ? `${made}/${attempted}` : "0/0";
+}
+
+function BoxScore({ team, playerStats, primaryColor }: BoxScoreProps) {
+  // Show only players in the starting lineup
+  const lineupPlayers = team.lineup
+    .map((id) => team.roster.find((p) => p.id === id))
+    .filter((p): p is NonNullable<typeof p> => p !== undefined);
+
+  const COL = "px-2 py-1.5 text-center text-[11px] font-mono";
+  const HDR = `${COL} text-gray-500 font-semibold tracking-wider`;
+
+  return (
+    <div
+      className="rounded-xl overflow-hidden"
+      style={{ border: "1px solid rgba(255,255,255,0.08)", background: "rgba(10,10,18,0.90)" }}
+    >
+      {/* Team header */}
+      <div
+        className="px-3 py-1.5 text-xs font-black tracking-widest uppercase"
+        style={{ color: primaryColor, borderBottom: "1px solid rgba(255,255,255,0.06)" }}
+      >
+        {team.name}
+      </div>
+
+      {/* Column headers */}
+      <table className="w-full border-collapse">
+        <thead>
+          <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+            <th className={`${HDR} text-left pl-3`} style={{ width: "36%" }}>Player</th>
+            <th className={HDR}>PTS</th>
+            <th className={HDR}>FG</th>
+            <th className={HDR}>3PM</th>
+            <th className={HDR}>FT</th>
+            <th className={HDR}>REB</th>
+            <th className={HDR}>STL</th>
+            <th className={HDR}>PF</th>
+          </tr>
+        </thead>
+        <tbody>
+          {lineupPlayers.map((p) => {
+            const s: PlayerGameStats = playerStats[p.id] ?? {
+              points: 0, fieldGoalsMade: 0, fieldGoalsAttempted: 0,
+              threesMade: 0, threesAttempted: 0, freeThrowsMade: 0,
+              freeThrowsAttempted: 0, rebounds: 0, steals: 0, fouls: 0,
+            };
+            return (
+              <tr
+                key={p.id}
+                style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
+              >
+                <td className="px-3 py-1.5 text-left">
+                  <span className="text-gray-500 text-[10px] font-mono mr-1.5">#{p.number}</span>
+                  <span className="text-white text-[11px] font-semibold">
+                    {p.firstName[0]}. {p.lastName}
+                  </span>
+                </td>
+                <td className={`${COL} text-white font-bold`}>{s.points}</td>
+                <td className={`${COL} text-gray-300`}>{fgStr(s.fieldGoalsMade, s.fieldGoalsAttempted)}</td>
+                <td className={`${COL} text-gray-300`}>{fgStr(s.threesMade, s.threesAttempted)}</td>
+                <td className={`${COL} text-gray-300`}>{fgStr(s.freeThrowsMade, s.freeThrowsAttempted)}</td>
+                <td className={`${COL} text-gray-300`}>{s.rebounds}</td>
+                <td className={`${COL} text-gray-300`}>{s.steals}</td>
+                <td className={`${COL} ${s.fouls >= 5 ? "text-red-400" : "text-gray-300"}`}>{s.fouls}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
