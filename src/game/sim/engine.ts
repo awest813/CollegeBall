@@ -33,21 +33,37 @@ import {
 // Initialisation
 // ---------------------------------------------------------------------------
 
-/** Default offensive positions relative to the basket (in the offensive half). */
+/**
+ * Default offensive positions in slot-space (relative to half-court centre).
+ * Positive x = toward the basket; negative x = toward half-court.
+ * `slotToWorld` translates these into world coordinates by adding ±25 ft offset.
+ *
+ * World positions for home team attacking right (basket at x=43):
+ *   slot.x + 25 → world x;  distance from basket = 43 − world x
+ *   PG  x=0  → world 25 (18 ft, top of key)
+ *   SG  x=-5 → world 20 (23 ft, left wing — 3-point range)
+ *   SF  x=-5 → world 20 (23 ft, right wing — 3-point range)
+ *   PF  x=10 → world 35 ( 8 ft, left elbow / high post)
+ *   C   x=14 → world 39 ( 4 ft, right low post)
+ */
 const OFFENSE_SLOTS: CourtPosition[] = [
-  { x: 0, y: 0 }, // PG – top of key
-  { x: -8, y: -12 }, // SG – left wing
-  { x: -8, y: 12 }, // SF – right wing
-  { x: -16, y: -6 }, // PF – left block
-  { x: -16, y: 6 }, // C – right block
+  { x: 0, y: 0 },    // PG – top of key (~18 ft)
+  { x: -5, y: -12 }, // SG – left wing  (~23 ft, 3-point range)
+  { x: -5, y: 12 },  // SF – right wing (~23 ft, 3-point range)
+  { x: 10, y: -5 },  // PF – left elbow / post (~8 ft)
+  { x: 14, y: 5 },   // C  – right low post (~4 ft)
 ];
 
+/**
+ * Default defensive positions (fallback when man-to-man matchup is unavailable).
+ * Mirrors the offensive slots with 2–3 ft of cushion toward the basket.
+ */
 const DEFENSE_SLOTS: CourtPosition[] = [
-  { x: 2, y: 0 },
-  { x: -6, y: -10 },
-  { x: -6, y: 10 },
-  { x: -14, y: -5 },
-  { x: -14, y: 5 },
+  { x: 2, y: 0 },    // PG matchup – near top of key
+  { x: -3, y: -10 }, // SG matchup – wing
+  { x: -3, y: 10 },  // SF matchup – wing
+  { x: 8, y: -4 },   // PF matchup – elbow area
+  { x: 12, y: 4 },   // C  matchup – post area
 ];
 
 function flipX(pos: CourtPosition): CourtPosition {
@@ -132,6 +148,15 @@ const PASS_INTERVAL_MIN = 1.5; // seconds between passes at minimum
 const SHOT_CHANCE_PER_SECOND = 0.08; // probability / sec of a shot attempt (base)
 const SHOT_FLIGHT_TIME = 0.8; // seconds
 
+/** Maximum make probability for a close-range layup/dunk. */
+const MAX_LAYUP_PROBABILITY = 0.72;
+/** Maximum make probability for a short mid-range floater (4–10 ft). */
+const MAX_SHORT_MIDRANGE_PROBABILITY = 0.65;
+/** Floor make probability for any shot, regardless of distance or contest. */
+const MIN_SHOT_PROBABILITY = 0.05;
+/** Additional probability penalty per foot beyond the deep-three threshold. */
+const DEEP_THREE_PENALTY_PER_FOOT = 0.01;
+
 /**
  * Convert a speed rating (0–100) into a speed factor.
  * Rating 50 → factor 1.0; rating 0 → 0.4; rating 100 → 1.6.
@@ -212,6 +237,17 @@ function assignTargets(
 
   // Offense: move to positional slots with jitter
   offPlayers.forEach((p, i) => {
+    // Ball handler drives toward the basket area to create a shot opportunity
+    if (p.id === ballHandlerId) {
+      // Target a position 6–18 ft from the basket, slightly off-centre
+      const driveDepth = 6 + Math.random() * 12;
+      const driveX = attackRight
+        ? basket.x - driveDepth
+        : basket.x + driveDepth;
+      p.targetPosition = clampToCourt({ x: driveX, y: (Math.random() - 0.5) * 12 });
+      return;
+    }
+
     const slot = OFFENSE_SLOTS[i % OFFENSE_SLOTS.length];
     const jitter: CourtPosition = {
       x: slot.x + (Math.random() - 0.5) * 8,
@@ -336,12 +372,22 @@ function tickClocks(ctx: TickContext): void {
     state.gameClock.remaining = Math.max(0, state.gameClock.remaining - dt);
     if (state.gameClock.remaining <= 0) {
       if (state.gameClock.half === 1) {
-        // Half-time
+        // Half-time: start the second half
         state.gameClock.half = 2;
         state.gameClock.remaining = settings.halfLength;
         state.shotClock.remaining = settings.shotClockLength;
-        // Swap possession
-        state.possession.team = state.possession.team === "home" ? "away" : "home";
+        // Swap possession and hand the ball to the new team's first player
+        const newHalfTeam: PossessionTeam =
+          state.possession.team === "home" ? "away" : "home";
+        state.possession.team = newHalfTeam;
+        const newHalfHandler = state.players.find((p) => p.teamId === newHalfTeam);
+        if (newHalfHandler) {
+          state.players.forEach((p) => (p.hasBall = false));
+          newHalfHandler.hasBall = true;
+          state.possession.ballHandlerId = newHalfHandler.id;
+        }
+        _timeSinceLastAction = 0;
+        _timeSinceLastTargetAssign = 0;
         ctx.events.push({ type: "half_end", message: "End of 1st half" });
         // Reassign all targets for the new half
         assignTargets(state.players, state.possession.team, state.possession.ballHandlerId);
@@ -371,7 +417,16 @@ function tickBallHandler(ctx: TickContext): void {
 
   // Adjust shot chance by shooting rating (higher rating → more willing to shoot)
   const shootingBias = 0.6 + (handler.ratings.shooting / 100) * 0.8;
-  const effectiveShotChance = SHOT_CHANCE_PER_SECOND * shootingBias * dt;
+
+  // Distance factor: players near the basket shoot far more often than those at
+  // half-court.  At 0 ft → 2.0×, at 20 ft → 1.0×, at 40 ft → 0.1× (clamped).
+  const basket = state.possession.team === "home"
+    ? { x: BASKET_X_AWAY, y: 0 }
+    : { x: BASKET_X_HOME, y: 0 };
+  const distToBasket = distance(handler.position, basket);
+  const distFactor = Math.max(0.1, 1 + (20 - distToBasket) / 20);
+
+  const effectiveShotChance = SHOT_CHANCE_PER_SECOND * shootingBias * distFactor * dt;
 
   if (_timeSinceLastAction > PASS_INTERVAL_MIN && Math.random() < effectiveShotChance) {
     attemptShot(ctx, handler);
@@ -465,6 +520,18 @@ function resolveShotInFlight(ctx: TickContext): void {
 
     // 3-point detection: use origin distance to basket (not ball's current position)
     const shotDist = distance(origin, target);
+
+    // Distance modifier: close-range shots go in at a higher clip; deep shots are harder.
+    //   < 4 ft  (layup / dunk area):  +0.15
+    //   4–10 ft (short mid-range / floater): +0.06
+    //   > THREE_POINT_RADIUS + 4 ft (deep three): −1 % per extra ft, min 5 %
+    if (shotDist < 4) {
+      makeProb = Math.min(MAX_LAYUP_PROBABILITY, makeProb + 0.15);
+    } else if (shotDist < 10) {
+      makeProb = Math.min(MAX_SHORT_MIDRANGE_PROBABILITY, makeProb + 0.06);
+    } else if (shotDist > THREE_POINT_RADIUS + 4) {
+      makeProb = Math.max(MIN_SHOT_PROBABILITY, makeProb - (shotDist - THREE_POINT_RADIUS - 4) * DEEP_THREE_PENALTY_PER_FOOT);
+    }
 
     const made = Math.random() < makeProb;
     if (made) {
@@ -625,6 +692,8 @@ function changePossession(ctx: TickContext): void {
   const newTeam: PossessionTeam = state.possession.team === "home" ? "away" : "home";
   state.possession.team = newTeam;
   state.shotClock.remaining = settings.shotClockLength;
+  _timeSinceLastAction = 0;
+  _timeSinceLastTargetAssign = 0;
 
   // Hand ball to the first player of the new team
   const newHandler = state.players.find((p) => p.teamId === newTeam);
