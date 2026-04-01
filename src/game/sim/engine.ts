@@ -23,8 +23,10 @@ import type {
 import {
   BASKET_X_HOME,
   BASKET_X_AWAY,
+  THREE_POINT_RADIUS,
   clampToCourt,
   distance,
+  lerpPosition,
 } from "../core/court";
 
 // ---------------------------------------------------------------------------
@@ -70,29 +72,38 @@ export function createInitialSimState(
 ): SimulationState {
   const players: SimPlayer[] = [];
 
+  // Build a lookup from player ID → ratings for quick access
+  const ratingsMap = new Map(
+    [...homeTeam.roster, ...awayTeam.roster].map((p) => [p.id, p.ratings])
+  );
+
   // Home team attacks RIGHT basket (away basket at x=43)
   homeTeam.lineup.forEach((id, i) => {
     const pos = slotToWorld(OFFENSE_SLOTS[i], true);
+    const ratings = ratingsMap.get(id) ?? { speed: 60, shooting: 60, passing: 60, defense: 60, rebounding: 60 };
     players.push({
       id,
       teamId: homeTeam.id,
       position: { ...pos },
       targetPosition: { ...pos },
       hasBall: i === 0, // PG starts with ball
-      speedFactor: 1,
+      speedFactor: speedFactorFromRating(ratings.speed),
+      ratings,
     });
   });
 
   // Away team defends on home's offensive half
   awayTeam.lineup.forEach((id, i) => {
     const pos = slotToWorld(DEFENSE_SLOTS[i], true);
+    const ratings = ratingsMap.get(id) ?? { speed: 60, shooting: 60, passing: 60, defense: 60, rebounding: 60 };
     players.push({
       id,
       teamId: awayTeam.id,
       position: { ...pos },
       targetPosition: { ...pos },
       hasBall: false,
-      speedFactor: 1,
+      speedFactor: speedFactorFromRating(ratings.speed),
+      ratings,
     });
   });
 
@@ -118,8 +129,24 @@ export function createInitialSimState(
 const PLAYER_SPEED = 18; // ft/s base speed
 const BALL_HELD_HEIGHT = 3.5;
 const PASS_INTERVAL_MIN = 1.5; // seconds between passes at minimum
-const SHOT_CHANCE_PER_SECOND = 0.08; // probability / sec of a shot attempt
-const MAKE_PROBABILITY = 0.42;
+const SHOT_CHANCE_PER_SECOND = 0.08; // probability / sec of a shot attempt (base)
+const SHOT_FLIGHT_TIME = 0.8; // seconds
+
+/**
+ * Convert a speed rating (0–100) into a speed factor.
+ * Rating 50 → factor 1.0; rating 0 → 0.4; rating 100 → 1.6.
+ */
+function speedFactorFromRating(rating: number): number {
+  return 0.4 + (rating / 100) * 1.2;
+}
+
+/**
+ * Compute base make-probability from a shooting rating (0–100).
+ * Rating 50 → ~0.39, rating 75 → ~0.47, rating 100 → 0.55.
+ */
+function baseMakeProb(shootingRating: number): number {
+  return 0.22 + (shootingRating / 100) * 0.33;
+}
 
 /** Move a player toward their target. Returns new position. */
 function moveToward(
@@ -139,45 +166,88 @@ function moveToward(
   });
 }
 
-/** Pick a random teammate (not self). */
-function randomTeammate(players: SimPlayer[], selfId: string, teamId: string): SimPlayer | null {
+/**
+ * Find the most open teammate (furthest from the nearest defender).
+ * Falls back to a random pick if everyone is equally covered.
+ */
+function findOpenTeammate(players: SimPlayer[], selfId: string, teamId: string): SimPlayer | null {
   const teammates = players.filter((p) => p.teamId === teamId && p.id !== selfId);
   if (teammates.length === 0) return null;
-  return teammates[Math.floor(Math.random() * teammates.length)];
+
+  const defenders = players.filter((p) => p.teamId !== teamId);
+  if (defenders.length === 0) {
+    return teammates[Math.floor(Math.random() * teammates.length)];
+  }
+
+  // Score each teammate by the distance to their nearest defender
+  const scored = teammates.map((tm) => {
+    const nearestDefDist = Math.min(...defenders.map((d) => distance(d.position, tm.position)));
+    return { player: tm, openness: nearestDefDist };
+  });
+
+  scored.sort((a, b) => b.openness - a.openness);
+  // 80% of the time pick the most open player; otherwise pick randomly from the rest
+  // for unpredictability.
+  if (scored.length === 1 || Math.random() < 0.8) return scored[0].player;
+  const fallbackIdx = 1 + Math.floor(Math.random() * (scored.length - 1));
+  return scored[fallbackIdx].player;
 }
 
 /** Assign new offensive/defensive targets for all players. */
 function assignTargets(
   players: SimPlayer[],
-  possessionTeam: PossessionTeam
+  possessionTeam: PossessionTeam,
+  ballHandlerId?: string | null
 ): void {
-  const offTeam = possessionTeam === "home" ? "home" : "away";
-  const defTeam = possessionTeam === "home" ? "away" : "home";
+  const offTeam = possessionTeam;
+  const defTeam: PossessionTeam = possessionTeam === "home" ? "away" : "home";
   const attackRight = possessionTeam === "home";
 
-  let offIdx = 0;
-  let defIdx = 0;
+  const offPlayers = players.filter((p) => p.teamId === offTeam);
+  const defPlayers = players.filter((p) => p.teamId === defTeam);
 
-  for (const p of players) {
-    if (p.teamId === offTeam) {
-      // Add randomness to slots so movement isn't static
-      const slot = OFFENSE_SLOTS[offIdx % OFFENSE_SLOTS.length];
-      const jitter: CourtPosition = {
-        x: slot.x + (Math.random() - 0.5) * 8,
-        y: slot.y + (Math.random() - 0.5) * 6,
-      };
-      p.targetPosition = slotToWorld(jitter, attackRight);
-      offIdx++;
-    } else if (p.teamId === defTeam) {
-      const slot = DEFENSE_SLOTS[defIdx % DEFENSE_SLOTS.length];
+  const basket: CourtPosition = attackRight
+    ? { x: BASKET_X_AWAY, y: 0 }
+    : { x: BASKET_X_HOME, y: 0 };
+
+  // Offense: move to positional slots with jitter
+  offPlayers.forEach((p, i) => {
+    const slot = OFFENSE_SLOTS[i % OFFENSE_SLOTS.length];
+    const jitter: CourtPosition = {
+      x: slot.x + (Math.random() - 0.5) * 8,
+      y: slot.y + (Math.random() - 0.5) * 6,
+    };
+    p.targetPosition = slotToWorld(jitter, attackRight);
+  });
+
+  // Defense: man-to-man — each defender stays between their matchup and the basket
+  defPlayers.forEach((def, i) => {
+    const matchup = offPlayers[i % offPlayers.length];
+    if (!matchup) {
+      // Fallback to old slot-based positioning
+      const slot = DEFENSE_SLOTS[i % DEFENSE_SLOTS.length];
       const jitter: CourtPosition = {
         x: slot.x + (Math.random() - 0.5) * 6,
         y: slot.y + (Math.random() - 0.5) * 4,
       };
-      p.targetPosition = slotToWorld(jitter, attackRight);
-      defIdx++;
+      def.targetPosition = slotToWorld(jitter, attackRight);
+      return;
     }
-  }
+
+    // Stay between the matched offensive player and the basket
+    const dx = basket.x - matchup.position.x;
+    const dy = basket.y - matchup.position.y;
+    const len = Math.sqrt(dx * dx + dy * dy) || 1;
+
+    // Defender is tighter on the ball handler (closer coverage)
+    const isBallHandler = matchup.id === ballHandlerId;
+    const guardDist = isBallHandler ? 1.5 + Math.random() * 1 : 3 + Math.random() * 3;
+
+    def.targetPosition = clampToCourt({
+      x: matchup.position.x + (dx / len) * guardDist + (Math.random() - 0.5) * 2,
+      y: matchup.position.y + (dy / len) * guardDist + (Math.random() - 0.5) * 2,
+    });
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -233,7 +303,7 @@ export function tick(
 
   // 3) Reassign movement targets periodically
   if (_timeSinceLastTargetAssign > 2.5) {
-    assignTargets(state.players, state.possession.team);
+    assignTargets(state.players, state.possession.team, state.possession.ballHandlerId);
     _timeSinceLastTargetAssign = 0;
   }
 
@@ -274,7 +344,7 @@ function tickClocks(ctx: TickContext): void {
         state.possession.team = state.possession.team === "home" ? "away" : "home";
         ctx.events.push({ type: "half_end", message: "End of 1st half" });
         // Reassign all targets for the new half
-        assignTargets(state.players, state.possession.team);
+        assignTargets(state.players, state.possession.team, state.possession.ballHandlerId);
       } else {
         state.gameClock.running = false;
         state.shotClock.running = false;
@@ -299,17 +369,18 @@ function tickBallHandler(ctx: TickContext): void {
   const handler = state.players.find((p) => p.id === state.possession.ballHandlerId);
   if (!handler) return;
 
-  // Decide: shoot or pass
-  const shootRoll = Math.random();
-  if (_timeSinceLastAction > PASS_INTERVAL_MIN && shootRoll < SHOT_CHANCE_PER_SECOND * dt) {
-    // Attempt a shot
+  // Adjust shot chance by shooting rating (higher rating → more willing to shoot)
+  const shootingBias = 0.6 + (handler.ratings.shooting / 100) * 0.8;
+  const effectiveShotChance = SHOT_CHANCE_PER_SECOND * shootingBias * dt;
+
+  if (_timeSinceLastAction > PASS_INTERVAL_MIN && Math.random() < effectiveShotChance) {
     attemptShot(ctx, handler);
     return;
   }
 
-  // Decide: pass
+  // Pass: prefer to pass to the most open teammate
   if (_timeSinceLastAction > PASS_INTERVAL_MIN && Math.random() < 0.3 * dt) {
-    const target = randomTeammate(state.players, handler.id, handler.teamId);
+    const target = findOpenTeammate(state.players, handler.id, handler.teamId);
     if (target) {
       executePass(ctx, handler, target);
     }
@@ -321,15 +392,21 @@ function attemptShot(ctx: TickContext, shooter: SimPlayer): void {
   state.shotInFlight = true;
   shooter.hasBall = false;
 
-  // Ball goes toward the basket
+  // Record origin before the ball leaves the player's hands
+  state._shotOrigin = { ...shooter.position };
+  state._shooterId = shooter.id;
+
+  // Ball travels toward the attacking basket
   const basket = state.possession.team === "home"
     ? { x: BASKET_X_AWAY, y: 0 }
     : { x: BASKET_X_HOME, y: 0 };
-  state.ballPosition = { ...shooter.position };
-  state.ballHeight = 8; // arc peak
 
   state._shotTarget = basket;
-  state._shotTimer = 0.8; // flight time in seconds
+  state._shotTimer = SHOT_FLIGHT_TIME;
+
+  // Ball starts at shooter position (arc peak handled in resolveShotInFlight)
+  state.ballPosition = { ...shooter.position };
+  state.ballHeight = BALL_HELD_HEIGHT;
 
   _timeSinceLastAction = 0;
 }
@@ -338,8 +415,9 @@ function resolveShotInFlight(ctx: TickContext): void {
   const { state, dt, settings } = ctx;
   const target = state._shotTarget;
   const timer = state._shotTimer ?? 0;
+  const origin = state._shotOrigin;
 
-  if (!target) {
+  if (!target || !origin) {
     state.shotInFlight = false;
     return;
   }
@@ -347,23 +425,50 @@ function resolveShotInFlight(ctx: TickContext): void {
   const newTimer = timer - dt;
   state._shotTimer = newTimer;
 
-  // Animate ball toward basket
-  const t = 1 - Math.max(0, newTimer / 0.8);
-  state.ballPosition = {
-    x: state.ballPosition.x + (target.x - state.ballPosition.x) * t * 0.1,
-    y: state.ballPosition.y + (target.y - state.ballPosition.y) * t * 0.1,
-  };
-  state.ballHeight = 8 + Math.sin(t * Math.PI) * 4; // arc
+  // Animate ball along a clean arc from origin → basket
+  const t = 1 - Math.max(0, newTimer / SHOT_FLIGHT_TIME); // 0 at release, 1 at basket
+  state.ballPosition = lerpPosition(origin, target, t);
+  state.ballHeight = BALL_HELD_HEIGHT + Math.sin(t * Math.PI) * 10; // arc peaks ~13.5 ft
 
   if (newTimer <= 0) {
-    // Resolve shot
+    // Shot has arrived — resolve make/miss
     state.shotInFlight = false;
     state._shotTarget = undefined;
     state._shotTimer = undefined;
+    state._shotOrigin = undefined;
 
-    const made = Math.random() < MAKE_PROBABILITY;
+    // Look up shooter ratings (shooter may have moved, that's fine)
+    const shooter = state.players.find((p) => p.id === state._shooterId);
+    state._shooterId = undefined;
+
+    // Base probability driven by shooter's shooting rating
+    const shooterRating = shooter?.ratings.shooting ?? 65;
+    let makeProb = baseMakeProb(shooterRating);
+
+    // Defensive contest: nearest defender within 10 ft reduces make probability
+    const defTeam = state.possession.team === "home" ? "away" : "home";
+    const defenders = state.players.filter((p) => p.teamId === defTeam);
+    if (defenders.length > 0 && shooter) {
+      const nearestDef = defenders.reduce((best, d) => {
+        const dist = distance(d.position, shooter.position);
+        return dist < best.dist ? { player: d, dist } : best;
+      }, { player: defenders[0], dist: Infinity });
+
+      if (nearestDef.dist < 10) {
+        // A 100-rated defender at 0 ft cuts make probability by 30% (multiplier 0.7);
+        // effect scales linearly with defender rating and proximity.
+        const contestStrength = (nearestDef.player.ratings.defense / 100) * 0.3;
+        const proxFactor = Math.max(0, 1 - nearestDef.dist / 10);
+        makeProb *= 1 - contestStrength * proxFactor;
+      }
+    }
+
+    // 3-point detection: use origin distance to basket (not ball's current position)
+    const shotDist = distance(origin, target);
+
+    const made = Math.random() < makeProb;
     if (made) {
-      const pts = distance(state.ballPosition, target) > 20 ? 3 : 2;
+      const pts = shotDist > THREE_POINT_RADIUS ? 3 : 2;
       if (state.possession.team === "home") state.score.home += pts;
       else state.score.away += pts;
       ctx.events.push({
@@ -372,22 +477,137 @@ function resolveShotInFlight(ctx: TickContext): void {
         points: pts,
         teamId: state.possession.team,
       });
+      // Made basket → change possession, reset shot clock
+      changePossession(ctx);
+      state.shotClock.remaining = settings.shotClockLength;
     } else {
       ctx.events.push({
         type: "shot_missed",
         message: "Shot missed!",
         teamId: state.possession.team,
       });
+      // Missed shot → contest the rebound
+      resolveRebound(ctx, target);
     }
+  }
+}
 
-    // After any shot, change possession
-    changePossession(ctx);
+/**
+ * Award a rebound after a missed shot.
+ * The ball lands near the basket; the closest player (weighted by rebounding
+ * rating) wins possession.  Offensive rebound keeps possession; defensive
+ * rebound changes it.
+ */
+function resolveRebound(ctx: TickContext, basketPos: CourtPosition): void {
+  const { state, settings } = ctx;
+
+  // Rebound lands randomly close to the basket
+  const reboundPos: CourtPosition = clampToCourt({
+    x: basketPos.x + (Math.random() - 0.5) * 8,
+    y: basketPos.y + (Math.random() - 0.5) * 6,
+  });
+
+  // Score each player: lower is better (closer + higher rebounding rating wins)
+  const scored = state.players.map((p) => {
+    const dist = distance(p.position, reboundPos);
+    // Each 10 rating points above 50 reduces effective distance by 1 ft
+    const ratingBonus = (p.ratings.rebounding - 50) * 0.1;
+    return { player: p, score: dist - ratingBonus };
+  });
+
+  scored.sort((a, b) => a.score - b.score);
+  const rebounder = scored[0].player;
+
+  // Assign ball to rebounder
+  state.players.forEach((p) => (p.hasBall = false));
+  rebounder.hasBall = true;
+
+  const isOffensiveRebound = rebounder.teamId === state.possession.team;
+
+  if (isOffensiveRebound) {
+    // Offensive rebound: same team keeps possession, shot clock resets
+    state.possession.ballHandlerId = rebounder.id;
     state.shotClock.remaining = settings.shotClockLength;
+    _timeSinceLastAction = 0;
+    ctx.events.push({
+      type: "rebound",
+      playerId: rebounder.id,
+      teamId: rebounder.teamId,
+      message: "Offensive rebound!",
+    });
+  } else {
+    // Defensive rebound: possession changes
+    state.possession.team = rebounder.teamId as PossessionTeam;
+    state.possession.ballHandlerId = rebounder.id;
+    state.shotClock.remaining = settings.shotClockLength;
+    _timeSinceLastAction = 0;
+    _timeSinceLastTargetAssign = 0;
+    assignTargets(state.players, rebounder.teamId as PossessionTeam, rebounder.id);
+    ctx.events.push({
+      type: "rebound",
+      playerId: rebounder.id,
+      teamId: rebounder.teamId,
+      message: "Defensive rebound!",
+    });
+    ctx.events.push({
+      type: "possession_change",
+      message: `${rebounder.teamId} ball`,
+    });
   }
 }
 
 function executePass(ctx: TickContext, from: SimPlayer, to: SimPlayer): void {
   const { state } = ctx;
+
+  // Check for steal: a defender near the passing lane may intercept
+  const defTeam = from.teamId === "home" ? "away" : "home";
+  const defenders = state.players.filter((p) => p.teamId === defTeam);
+
+  const laneMid: CourtPosition = {
+    x: (from.position.x + to.position.x) / 2,
+    y: (from.position.y + to.position.y) / 2,
+  };
+
+  if (defenders.length > 0) {
+    const nearestDef = defenders.reduce((best, d) => {
+      const dist = distance(d.position, laneMid);
+      return dist < best.dist ? { player: d, dist } : best;
+    }, { player: defenders[0], dist: Infinity });
+
+    if (nearestDef.dist < 8) {
+      // Steal probability: increases with defender's defense rating and proximity;
+      // decreases with the passer's passing rating.
+      const proximity = Math.max(0, 1 - nearestDef.dist / 8);
+      const defSkill = nearestDef.player.ratings.defense / 100;
+      const passSkill = from.ratings.passing / 100;
+      const stealChance = 0.15 * defSkill * proximity * (1 - passSkill * 0.5);
+
+      if (Math.random() < stealChance) {
+        from.hasBall = false;
+        nearestDef.player.hasBall = true;
+        state.possession.team = nearestDef.player.teamId as PossessionTeam;
+        state.possession.ballHandlerId = nearestDef.player.id;
+        state.shotClock.remaining = ctx.settings.shotClockLength;
+        _timeSinceLastAction = 0;
+        _timeSinceLastTargetAssign = 0;
+        assignTargets(state.players, nearestDef.player.teamId as PossessionTeam, nearestDef.player.id);
+
+        ctx.events.push({
+          type: "steal",
+          playerId: nearestDef.player.id,
+          teamId: nearestDef.player.teamId,
+          message: "Steal!",
+        });
+        ctx.events.push({
+          type: "possession_change",
+          message: `${nearestDef.player.teamId} ball`,
+        });
+        return;
+      }
+    }
+  }
+
+  // No steal: complete the pass
   from.hasBall = false;
   to.hasBall = true;
   state.possession.ballHandlerId = to.id;
@@ -396,7 +616,7 @@ function executePass(ctx: TickContext, from: SimPlayer, to: SimPlayer): void {
   ctx.events.push({
     type: "pass",
     playerId: from.id,
-    message: `Pass to #${to.id}`,
+    message: "Pass",
   });
 }
 
@@ -415,7 +635,7 @@ function changePossession(ctx: TickContext): void {
   }
 
   // Reassign targets for the new possession
-  assignTargets(state.players, newTeam);
+  assignTargets(state.players, newTeam, state.possession.ballHandlerId);
 
   ctx.events.push({ type: "possession_change", message: `${newTeam} ball` });
 }
