@@ -30,9 +30,20 @@ export default function Scoreboard() {
   const awayTeam = useGameStore((s) => s.awayTeam);
   const simStatus = useGameStore((s) => s.simStatus);
   const teamFouls = useGameStore((s) => s.teamFouls);
+  const settings = useGameStore((s) => s.settings);
 
   const shotClockUrgent = shotClock.remaining <= 5 && shotClock.running;
   const isFinished = simStatus === "finished";
+
+  // Bonus status is determined by the *opponent's* foul count
+  // (home team fouls put away team in bonus, and vice versa)
+  function bonusLabel(opponentFouls: number): string | null {
+    if (opponentFouls >= settings.doubleBonusThreshold) return "BONUS+";
+    if (opponentFouls >= settings.bonusFoulThreshold) return "BONUS";
+    return null;
+  }
+  const homeBonusLabel = bonusLabel(teamFouls.away);
+  const awayBonusLabel = bonusLabel(teamFouls.home);
 
   return (
     <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 select-none">
@@ -48,6 +59,7 @@ export default function Scoreboard() {
           hasPossession={possession.team === "home"}
           possessionSide="right"
           fouls={teamFouls.home}
+          bonusLabel={homeBonusLabel}
         />
 
         {/* ── Centre: clocks ─────────────────────────── */}
@@ -91,6 +103,7 @@ export default function Scoreboard() {
           hasPossession={possession.team === "away"}
           possessionSide="left"
           fouls={teamFouls.away}
+          bonusLabel={awayBonusLabel}
         />
       </div>
     </div>
@@ -108,6 +121,7 @@ interface TeamPanelProps {
   hasPossession: boolean;
   possessionSide: "left" | "right";
   fouls: number;
+  bonusLabel: string | null;
 }
 
 function TeamPanel({
@@ -117,6 +131,7 @@ function TeamPanel({
   hasPossession,
   possessionSide,
   fouls,
+  bonusLabel,
 }: TeamPanelProps) {
   const isRight = possessionSide === "right";
 
@@ -134,6 +149,11 @@ function TeamPanel({
           <span className="text-gray-500 text-[9px] font-semibold tracking-wider mt-1">
             {fouls} PF
           </span>
+          {bonusLabel && (
+            <span className="text-yellow-400 text-[8px] font-extrabold tracking-widest mt-0.5">
+              {bonusLabel}
+            </span>
+          )}
         </div>
       )}
 
@@ -159,6 +179,11 @@ function TeamPanel({
           <span className="text-gray-500 text-[9px] font-semibold tracking-wider mt-1">
             {fouls} PF
           </span>
+          {bonusLabel && (
+            <span className="text-yellow-400 text-[8px] font-extrabold tracking-widest mt-0.5">
+              {bonusLabel}
+            </span>
+          )}
         </div>
       )}
 

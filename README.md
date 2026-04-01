@@ -6,9 +6,9 @@
 
 ## What It Is
 
-CollegeBall simulates a full 40-minute college basketball game entirely in the browser. A pure simulation engine drives all the action — player movement, shot selection, passing, steals, rebounds, fouls, and free throws — while a Babylon.js render layer visualises everything on a 3D court with a broadcast-style camera.
+CollegeBall simulates a full 40-minute college basketball game entirely in the browser. A pure simulation engine drives all the action — player movement, shot selection, passing, steals, rebounds, shooting fouls, non-shooting fouls, free throws, bonus rules, player stamina, and auto-substitutions — while a Babylon.js render layer visualises everything on a 3D court with a broadcast-style camera.
 
-This is a **coaching simulator**, not a twitch game. You watch the game unfold, control speed, switch camera angles, and track live stats. Future phases will add substitutions, play-calling, recruiting, and season / tournament modes.
+This is a **coaching simulator**, not a twitch game. You watch the game unfold, control speed, switch camera angles, and track live stats. Future phases will add manual substitutions, play-calling, recruiting, and season / tournament modes.
 
 ---
 
@@ -79,13 +79,17 @@ The engine (`src/game/sim/engine.ts`) runs as a pure `tick(state, dt) → state`
 - **Ball-handler AI** — drives toward the basket, decides pass vs. shoot based on distance + ratings
 - **Shot resolution** — distance-adjusted make probability (layup bonus, deep-3 penalty), defensive contest reduction
 - **Shooting fouls** — contested shots in close range can draw fouls; foul-out at 5 personal fouls
+- **Non-shooting fouls** — defenders risk fouling a driving ball handler; NCAA bonus rules: 1-and-1 at 7 team fouls, double bonus at 10
 - **Free throws** — instant resolution based on shooter's FT rating (derived from shooting rating)
 - **Rebound contest** — proximity + rebounding rating weighted; offensive / defensive rebound branch
 - **Steal chance** — defender proximity to passing lane, defense vs. passing rating duel
+- **Assists** — last completed pass before a made field goal earns an assist
+- **Player stamina** — drains with movement (modulated by `endurance` rating), imposes speed penalty; recovers on the bench
+- **Auto-substitutions** — fatigued (stamina ≤ threshold) or fouled-out players are swapped for the freshest bench player
 - **Clocks** — game clock (2 × 20-min halves), shot clock (30 s), half-time possession swap, team fouls reset per half
-- **Player statistics** — points, FG/FT attempts & makes, 3-pointers, rebounds, steals, fouls (per game)
+- **Player statistics** — points, FG/FT attempts & makes, 3-pointers, rebounds, assists, steals, fouls, minutes played (per game)
 
-Player ratings: `speed`, `shooting`, `passing`, `defense`, `rebounding` (all 0–100).
+Player ratings: `speed`, `shooting`, `passing`, `defense`, `rebounding`, `endurance` (all 0–100).
 
 ---
 
@@ -97,13 +101,19 @@ Pure basketball sim engine, game clock / shot clock, possession system, shot/pas
 ### ✅ Phase 2 — 3D Rendering & Visual Polish
 Babylon.js court scene, arena lighting, 3-part procedural player meshes with DynamicTexture jersey numbers, 11-state animation FSM with blend-in cross-fades, GLB model loading infrastructure, broadcast camera (3 modes: broadcast / overhead / endzone), polished main menu and in-game HUD.
 
-### 🚧 Phase 3 — Game Depth (current)
-Shooting fouls, free throw simulation, team foul tracking (bonus FT rules), personal foul-out at 5 fouls, per-game player statistics (points, FG, FT, 3PM, rebounds, steals, fouls), live fouls display on the scoreboard, end-of-game box score in the post-game overlay.
+### ✅ Phase 3 — Game Depth
+Shooting fouls, free throw simulation, team foul tracking, personal foul-out at 5 fouls, per-game player statistics (points, FG, FT, 3PM, rebounds, steals, fouls), live fouls display on the scoreboard, end-of-game box score in the post-game overlay.
+
+### 🚧 Phase 4 — Depth & Roster Management (current)
+- **Non-shooting fouls with NCAA bonus rules**: foul on drives outside the shooting motion; opponent earns one-and-one at 7 team fouls, double bonus at 10.
+- **Player stamina & fatigue**: stamina drains with movement (modulated by endurance rating), penalising speed at low stamina.
+- **Auto-substitutions**: exhausted (stamina ≤ 25) or fouled-out players are automatically replaced by the freshest bench player; bench stamina recovers over time.
+- **Assists**: last passer credited with an assist on any made field goal; shown in the box score (AST column).
+- **Bonus indicator** on the scoreboard scorebug (BONUS / BONUS+).
+- **Bench players in box score**: any sub who logged minutes appears in the post-game table.
 
 ### 🔮 Future
-- Non-shooting / bonus foul system
-- Player substitutions & fatigue / stamina
-- Play calling & coaching decisions (Playbook)
+- Manual substitutions & play-calling (Playbook)
 - Season mode with standings and schedules
 - Tournament bracket
 - Player recruiting and roster management

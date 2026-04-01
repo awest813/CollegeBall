@@ -88,16 +88,19 @@ export function createInitialSimState(
   settings: GameSettings
 ): SimulationState {
   const players: SimPlayer[] = [];
+  const bench: SimPlayer[] = [];
 
   // Build a lookup from player ID → ratings for quick access
   const ratingsMap = new Map(
     [...homeTeam.roster, ...awayTeam.roster].map((p) => [p.id, p.ratings])
   );
 
+  const defaultRatings = { speed: 60, shooting: 60, passing: 60, defense: 60, rebounding: 60, endurance: 60 };
+
   // Home team attacks RIGHT basket (away basket at x=43)
   homeTeam.lineup.forEach((id, i) => {
     const pos = slotToWorld(OFFENSE_SLOTS[i], true);
-    const ratings = ratingsMap.get(id) ?? { speed: 60, shooting: 60, passing: 60, defense: 60, rebounding: 60 };
+    const ratings = ratingsMap.get(id) ?? defaultRatings;
     players.push({
       id,
       teamId: homeTeam.id,
@@ -107,13 +110,32 @@ export function createInitialSimState(
       speedFactor: speedFactorFromRating(ratings.speed),
       ratings,
       fouls: 0,
+      stamina: 100,
     });
   });
+
+  // Home bench players (roster members not in the starting lineup)
+  homeTeam.roster
+    .filter((p) => !homeTeam.lineup.includes(p.id))
+    .forEach((p) => {
+      const ratings = ratingsMap.get(p.id) ?? defaultRatings;
+      bench.push({
+        id: p.id,
+        teamId: homeTeam.id,
+        position: { x: -47, y: 0 },
+        targetPosition: { x: -47, y: 0 },
+        hasBall: false,
+        speedFactor: speedFactorFromRating(ratings.speed),
+        ratings,
+        fouls: 0,
+        stamina: 100,
+      });
+    });
 
   // Away team defends on home's offensive half
   awayTeam.lineup.forEach((id, i) => {
     const pos = slotToWorld(DEFENSE_SLOTS[i], true);
-    const ratings = ratingsMap.get(id) ?? { speed: 60, shooting: 60, passing: 60, defense: 60, rebounding: 60 };
+    const ratings = ratingsMap.get(id) ?? defaultRatings;
     players.push({
       id,
       teamId: awayTeam.id,
@@ -123,8 +145,27 @@ export function createInitialSimState(
       speedFactor: speedFactorFromRating(ratings.speed),
       ratings,
       fouls: 0,
+      stamina: 100,
     });
   });
+
+  // Away bench players
+  awayTeam.roster
+    .filter((p) => !awayTeam.lineup.includes(p.id))
+    .forEach((p) => {
+      const ratings = ratingsMap.get(p.id) ?? defaultRatings;
+      bench.push({
+        id: p.id,
+        teamId: awayTeam.id,
+        position: { x: 47, y: 0 },
+        targetPosition: { x: 47, y: 0 },
+        hasBall: false,
+        speedFactor: speedFactorFromRating(ratings.speed),
+        ratings,
+        fouls: 0,
+        stamina: 100,
+      });
+    });
 
   // Initialise per-player stats record for every roster player
   const playerStats: Record<string, PlayerGameStats> = {};
@@ -138,8 +179,10 @@ export function createInitialSimState(
       freeThrowsMade: 0,
       freeThrowsAttempted: 0,
       rebounds: 0,
+      assists: 0,
       steals: 0,
       fouls: 0,
+      minutesPlayed: 0,
     };
   });
 
@@ -147,6 +190,7 @@ export function createInitialSimState(
 
   return {
     players,
+    bench,
     ballPosition: { ...ballHandler.position },
     ballHeight: 3.5, // held at waist height
     possession: { team: "home", ballHandlerId: ballHandler.id },
@@ -196,6 +240,27 @@ const SHOOTING_FOUL_RANGE_FT = 4.5;
 const AND_ONE_FOUL_BASE_CHANCE = 0.04;
 /** Base foul chance when a shot is missed and a defender is maximally close. */
 const MISSED_SHOT_FOUL_BASE_CHANCE = 0.11;
+
+// ── Non-shooting foul constants ────────────────────────────────────────────────
+
+/** Defender must be within this distance (ft) for a non-shooting foul on a drive. */
+const NON_SHOOTING_FOUL_RANGE_FT = 3.5;
+/** Base chance per second of a non-shooting foul when the ball handler drives close to a defender. */
+const NON_SHOOTING_FOUL_BASE_RATE = 0.06;
+
+// ── Stamina constants ─────────────────────────────────────────────────────────
+
+/**
+ * Stamina drain per foot of movement.  A player running ~18 ft/s would drain
+ * approximately 0.18 stamina/s at full sprint.  Endurance rating reduces drain.
+ */
+const STAMINA_DRAIN_PER_FOOT = 0.01;
+/** Passive stamina drain per second (breathing hard, cuts, repositioning). */
+const STAMINA_PASSIVE_DRAIN_PER_SEC = 0.04;
+/** Stamina recovery per second when a player is on the bench. */
+const STAMINA_BENCH_RECOVERY_PER_SEC = 3.0;
+/** Minimum effective stamina (players always maintain this floor). */
+const STAMINA_FLOOR = 15;
 
 /**
  * Convert a speed rating (0–100) into a speed factor.
@@ -356,6 +421,7 @@ export function tick(
   const state: SimulationState = {
     ...prev,
     players: prev.players.map((p) => ({ ...p, position: { ...p.position }, targetPosition: { ...p.targetPosition } })),
+    bench: prev.bench.map((p) => ({ ...p, position: { ...p.position }, targetPosition: { ...p.targetPosition } })),
     ballPosition: { ...prev.ballPosition },
     possession: { ...prev.possession },
     gameClock: { ...prev.gameClock },
@@ -391,14 +457,20 @@ export function tick(
   if (state.shotInFlight) {
     resolveShotInFlight(ctx);
   } else {
-    // 5) Ball-handler AI: pass or shoot
+    // 5) Ball-handler AI: pass or shoot (may also commit a non-shooting foul)
     tickBallHandler(ctx);
   }
 
-  // 6) Move all players toward targets
+  // 6) Move all players toward targets and update stamina
   tickMovement(ctx);
 
-  // 7) Update ball position to follow handler or flight arc
+  // 7) Recover bench stamina and track minutes played
+  tickBench(ctx);
+
+  // 8) Check for substitutions (fatigue or foul-out)
+  tickSubstitutions(ctx);
+
+  // 9) Update ball position to follow handler or flight arc
   tickBallPosition(ctx);
 
   state.events = ctx.events;
@@ -457,19 +529,50 @@ function tickClocks(ctx: TickContext): void {
 }
 
 function tickBallHandler(ctx: TickContext): void {
-  const { state, dt } = ctx;
+  const { state, dt, settings } = ctx;
   const handler = state.players.find((p) => p.id === state.possession.ballHandlerId);
   if (!handler) return;
+
+  const basket = state.possession.team === "home"
+    ? { x: BASKET_X_AWAY, y: 0 }
+    : { x: BASKET_X_HOME, y: 0 };
+  const distToBasket = distance(handler.position, basket);
+
+  // ── Non-shooting foul detection ───────────────────────────────────────────
+  // A defender who is very close to a driving ball handler may commit a
+  // non-shooting foul.  Bonus rules determine whether FTs are awarded.
+  if (_timeSinceLastAction > PASS_INTERVAL_MIN && distToBasket < 18) {
+    const defTeam = handler.teamId === "home" ? "away" : "home";
+    const defenders = state.players.filter((p) => p.teamId === defTeam);
+
+    if (defenders.length > 0) {
+      const nearestDef = defenders.reduce((best, d) => {
+        const dist = distance(d.position, handler.position);
+        return dist < best.dist ? { player: d, dist } : best;
+      }, { player: defenders[0], dist: Infinity });
+
+      if (
+        nearestDef.dist < NON_SHOOTING_FOUL_RANGE_FT &&
+        nearestDef.player.fouls < 5
+      ) {
+        const proximity = 1 - nearestDef.dist / NON_SHOOTING_FOUL_RANGE_FT;
+        const defSkill = nearestDef.player.ratings.defense / 100;
+        // Better defenders foul less; worse defenders are reckless
+        const foulChance = NON_SHOOTING_FOUL_BASE_RATE * (1 - defSkill * 0.5) * proximity * dt;
+
+        if (Math.random() < foulChance) {
+          resolveNonShootingFoul(ctx, handler, nearestDef.player);
+          return;
+        }
+      }
+    }
+  }
 
   // Adjust shot chance by shooting rating (higher rating → more willing to shoot)
   const shootingBias = 0.6 + (handler.ratings.shooting / 100) * 0.8;
 
   // Distance factor: players near the basket shoot far more often than those at
   // half-court.  At 0 ft → 2.0×, at 20 ft → 1.0×, at 40 ft → 0.1× (clamped).
-  const basket = state.possession.team === "home"
-    ? { x: BASKET_X_AWAY, y: 0 }
-    : { x: BASKET_X_HOME, y: 0 };
-  const distToBasket = distance(handler.position, basket);
   const distFactor = Math.max(0.1, 1 + (20 - distToBasket) / 20);
 
   const effectiveShotChance = SHOT_CHANCE_PER_SECOND * shootingBias * distFactor * dt;
@@ -486,6 +589,124 @@ function tickBallHandler(ctx: TickContext): void {
       executePass(ctx, handler, target);
     }
   }
+}
+
+/**
+ * Resolve a non-shooting foul on the ball handler.
+ * NCAA bonus rules:
+ *   0–6 team fouls  → no free throws; offensive team retains possession w/ fresh shot clock
+ *   7–9 team fouls  → one-and-one (make the first to earn the second)
+ *   10+ team fouls  → double bonus (automatic 2 FTs)
+ */
+function resolveNonShootingFoul(
+  ctx: TickContext,
+  fouled: SimPlayer,
+  fouler: SimPlayer
+): void {
+  const { state, settings } = ctx;
+
+  fouler.fouls += 1;
+  const foulerTeam = fouler.teamId as PossessionTeam;
+  state.teamFouls[foulerTeam] += 1;
+  if (state.playerStats[fouler.id]) {
+    state.playerStats[fouler.id].fouls += 1;
+  }
+
+  const foulMsg = fouler.fouls >= 5 ? "Foul — fouled out!" : "Non-shooting foul!";
+  ctx.events.push({
+    type: "non_shooting_foul",
+    playerId: fouler.id,
+    teamId: foulerTeam,
+    message: foulMsg,
+  });
+
+  const teamFoulsForFouler = state.teamFouls[foulerTeam];
+
+  if (teamFoulsForFouler >= settings.doubleBonusThreshold) {
+    // Double bonus: 2 automatic free throws
+    ctx.events.push({
+      type: "non_shooting_foul",
+      teamId: foulerTeam,
+      message: "Double bonus — 2 free throws!",
+    });
+    resolveFreeThrows(ctx, fouled, 2, fouled.teamId as PossessionTeam);
+    changePossession(ctx);
+  } else if (teamFoulsForFouler >= settings.bonusFoulThreshold) {
+    // One-and-one: make the first to earn the second
+    ctx.events.push({
+      type: "non_shooting_foul",
+      teamId: foulerTeam,
+      message: "Bonus — one-and-one!",
+    });
+    resolveOneAndOne(ctx, fouled, fouled.teamId as PossessionTeam);
+    changePossession(ctx);
+  } else {
+    // No FTs — just reset the shot clock and keep possession
+    state.shotClock.remaining = settings.shotClockLength;
+    _timeSinceLastAction = 0;
+    ctx.events.push({
+      type: "non_shooting_foul",
+      teamId: foulerTeam,
+      message: "Foul — ball retained, shot clock reset.",
+    });
+  }
+}
+
+/**
+ * One-and-one free throw sequence: the shooter earns a second attempt only
+ * if the first is made.
+ */
+function resolveOneAndOne(
+  ctx: TickContext,
+  shooter: SimPlayer,
+  shootingTeam: PossessionTeam
+): void {
+  const { state } = ctx;
+  const ftRate = Math.min(MAX_FT_RATE, MIN_FT_RATE + (shooter.ratings.shooting / 100) * FT_RATING_FACTOR);
+
+  // First attempt
+  const firstMade = Math.random() < ftRate;
+  if (state.playerStats[shooter.id]) {
+    state.playerStats[shooter.id].freeThrowsAttempted += 1;
+    if (firstMade) {
+      state.playerStats[shooter.id].freeThrowsMade += 1;
+      state.playerStats[shooter.id].points += 1;
+    }
+  }
+  if (firstMade) {
+    if (shootingTeam === "home") state.score.home += 1;
+    else state.score.away += 1;
+  }
+  ctx.events.push({
+    type: firstMade ? "free_throw_made" : "free_throw_missed",
+    playerId: shooter.id,
+    teamId: shootingTeam,
+    points: firstMade ? 1 : 0,
+    message: firstMade ? "Free throw good! (1-and-1)" : "Free throw missed — no second shot.",
+  });
+
+  if (!firstMade) return;
+
+  // Second attempt (only if first was made)
+  const secondMade = Math.random() < ftRate;
+  if (state.playerStats[shooter.id]) {
+    state.playerStats[shooter.id].freeThrowsAttempted += 1;
+    if (secondMade) {
+      state.playerStats[shooter.id].freeThrowsMade += 1;
+      state.playerStats[shooter.id].points += 1;
+    }
+  }
+  if (secondMade) {
+    if (shootingTeam === "home") state.score.home += 1;
+    else state.score.away += 1;
+  }
+  ctx.events.push({
+    type: secondMade ? "free_throw_made" : "free_throw_missed",
+    playerId: shooter.id,
+    teamId: shootingTeam,
+    points: secondMade ? 1 : 0,
+    message: secondMade ? "Free throw good!" : "Free throw missed.",
+  });
 }
 
 function attemptShot(ctx: TickContext, shooter: SimPlayer): void {
@@ -548,6 +769,19 @@ function resolveFreeThrows(
       message: made ? "Free throw good!" : "Free throw missed.",
     });
   }
+}
+
+/**
+ * Credit an assist to the last passer (if any) for a made field goal.
+ * Clears `_lastPassFromId` after attribution.
+ */
+function awardAssist(state: SimulationState, shooterId: string): void {
+  if (state._lastPassFromId && state._lastPassFromId !== shooterId) {
+    if (state.playerStats[state._lastPassFromId]) {
+      state.playerStats[state._lastPassFromId].assists += 1;
+    }
+  }
+  state._lastPassFromId = undefined;
 }
 
 function resolveShotInFlight(ctx: TickContext): void {
@@ -669,6 +903,9 @@ function resolveShotInFlight(ctx: TickContext): void {
           state.playerStats[shooter.id].points += pts;
           state.playerStats[shooter.id].fieldGoalsMade += 1;
           if (isThreePointer) state.playerStats[shooter.id].threesMade += 1;
+          awardAssist(state, shooter.id);
+        } else {
+          state._lastPassFromId = undefined;
         }
         ctx.events.push({
           type: "shot_made",
@@ -703,6 +940,9 @@ function resolveShotInFlight(ctx: TickContext): void {
         state.playerStats[shooter.id].points += pts;
         state.playerStats[shooter.id].fieldGoalsMade += 1;
         if (isThreePointer) state.playerStats[shooter.id].threesMade += 1;
+        awardAssist(state, shooter.id);
+      } else {
+        state._lastPassFromId = undefined;
       }
       ctx.events.push({
         type: "shot_made",
@@ -715,6 +955,7 @@ function resolveShotInFlight(ctx: TickContext): void {
       changePossession(ctx);
       state.shotClock.remaining = settings.shotClockLength;
     } else {
+      state._lastPassFromId = undefined;
       ctx.events.push({
         type: "shot_missed",
         teamId: state.possession.team,
@@ -853,6 +1094,8 @@ function executePass(ctx: TickContext, from: SimPlayer, to: SimPlayer): void {
   from.hasBall = false;
   to.hasBall = true;
   state.possession.ballHandlerId = to.id;
+  // Track the passer as an assist candidate for the next shot made
+  state._lastPassFromId = from.id;
   _timeSinceLastAction = 0;
 
   ctx.events.push({
@@ -869,6 +1112,8 @@ function changePossession(ctx: TickContext): void {
   state.shotClock.remaining = settings.shotClockLength;
   _timeSinceLastAction = 0;
   _timeSinceLastTargetAssign = 0;
+  // A possession change clears any pending assist
+  state._lastPassFromId = undefined;
 
   // Hand ball to the first player of the new team
   const newHandler = state.players.find((p) => p.teamId === newTeam);
@@ -887,8 +1132,81 @@ function changePossession(ctx: TickContext): void {
 function tickMovement(ctx: TickContext): void {
   const { state, dt } = ctx;
   for (const p of state.players) {
-    const speed = PLAYER_SPEED * p.speedFactor;
+    // Effective speed is reduced at low stamina (stamina 100 → ×1.0, stamina 0 → ×0.5)
+    const staminaFactor = 0.5 + (Math.max(STAMINA_FLOOR, p.stamina) / 100) * 0.5;
+    const speed = PLAYER_SPEED * p.speedFactor * staminaFactor;
+    const prevPos = { ...p.position };
     p.position = moveToward(p.position, p.targetPosition, speed, dt);
+
+    // Drain stamina proportional to distance moved + passive drain
+    const distMoved = distance(prevPos, p.position);
+    const enduranceFactor = 0.5 + (p.ratings.endurance / 100) * 0.5; // high endurance = less drain
+    const drain = (distMoved * STAMINA_DRAIN_PER_FOOT + STAMINA_PASSIVE_DRAIN_PER_SEC * dt) / enduranceFactor;
+    p.stamina = Math.max(STAMINA_FLOOR, p.stamina - drain);
+
+    // Track minutes played (convert game-clock seconds → minutes)
+    if (state.playerStats[p.id]) {
+      state.playerStats[p.id].minutesPlayed += dt / 60;
+    }
+  }
+}
+
+/**
+ * Recover stamina for bench players each tick.
+ */
+function tickBench(ctx: TickContext): void {
+  const { state, dt } = ctx;
+  for (const p of state.bench) {
+    p.stamina = Math.min(100, p.stamina + STAMINA_BENCH_RECOVERY_PER_SEC * dt);
+  }
+}
+
+/**
+ * Auto-substitution: replace exhausted or fouled-out on-court players with
+ * the freshest available bench player on the same team.
+ */
+function tickSubstitutions(ctx: TickContext): void {
+  const { state, settings } = ctx;
+
+  // Collect players who need to be substituted out
+  const toSub = state.players.filter(
+    (p) => p.fouls >= 5 || p.stamina <= settings.subStaminaThreshold
+  );
+
+  for (const tired of toSub) {
+    // Find the freshest bench player on the same team
+    const candidates = state.bench.filter((b) => b.teamId === tired.teamId);
+    if (candidates.length === 0) continue;
+
+    candidates.sort((a, b) => b.stamina - a.stamina);
+    const sub = candidates[0];
+
+    // Place sub at the tired player's current position so the transition is seamless
+    sub.position = { ...tired.position };
+    sub.targetPosition = { ...tired.targetPosition };
+    sub.hasBall = tired.hasBall;
+    if (tired.hasBall) {
+      state.possession.ballHandlerId = sub.id;
+      state._lastPassFromId = undefined;
+    }
+
+    // Swap arrays
+    state.players = state.players.map((p) => (p.id === tired.id ? sub : p));
+    state.bench = state.bench.filter((b) => b.id !== sub.id);
+    state.bench.push(tired);
+    tired.hasBall = false;
+
+    const reason = tired.fouls >= 5 ? "fouled out" : "fatigue";
+    ctx.events.push({
+      type: "substitution",
+      playerId: sub.id,
+      teamId: sub.teamId,
+      message: `Sub: #${sub.id} in for #${tired.id} (${reason})`,
+    });
+
+    // Re-assign targets after the lineup change
+    assignTargets(state.players, state.possession.team, state.possession.ballHandlerId);
+    _timeSinceLastTargetAssign = 0;
   }
 }
 

@@ -13,7 +13,7 @@ import { useGameStore } from "../store/gameStore";
 interface FeedEntry {
   id: number;
   message: string;
-  kind: "score" | "miss" | "turnover" | "info" | "foul";
+  kind: "score" | "miss" | "turnover" | "info" | "foul" | "sub";
   teamColor?: string;
 }
 
@@ -28,6 +28,7 @@ const KIND_STYLES: Record<FeedEntry["kind"], string> = {
   turnover: "text-amber-300",
   info: "text-sky-300",
   foul: "text-orange-400",
+  sub: "text-purple-300",
 };
 
 export default function EventFeed() {
@@ -99,6 +100,22 @@ export default function EventFeed() {
           message: `${team.abbreviation} ball`,
           kind: "turnover",
         });
+      }
+
+      // Substitution: detect when a player on court is replaced
+      if (state.simPlayers.length === prev.simPlayers.length) {
+        const prevIds = new Set(prev.simPlayers.map((p) => p.id));
+        for (const p of state.simPlayers) {
+          if (!prevIds.has(p.id)) {
+            const team = p.teamId === "home" ? homeTeam : awayTeam;
+            newEntries.push({
+              id: _entryId++,
+              message: `${team.abbreviation} sub`,
+              kind: "sub",
+            });
+            break; // one entry per tick is enough
+          }
+        }
       }
 
       if (newEntries.length > 0) {
