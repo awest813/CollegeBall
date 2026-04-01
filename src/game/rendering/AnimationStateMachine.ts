@@ -19,7 +19,7 @@
  *     the moment a shot goes up, without relying on hasBall.
  */
 
-import type { SimPlayer, AnimationStateName } from "../types";
+import type { SimPlayer, AnimationStateName, MatchPhase } from "../types";
 
 // Re-export so callers only need to import from this module
 export type { AnimationStateName } from "../types";
@@ -101,6 +101,10 @@ export interface PlayerAnimContext {
    * the shooter's hands, rather than relying on hasBall.
    */
   shooterId?: string;
+  /** Current match phase (PRE_GAME, IN_PLAY, etc). */
+  phase?: MatchPhase;
+  /** True if this player's team won the game. */
+  isWinner?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -131,6 +135,14 @@ export function resolveAnimationState(
   ctx: PlayerAnimContext,
   current: AnimationState
 ): AnimationStateName {
+  // 0. Match Phase specific overrides
+  if (ctx.phase === "FULL_TIME") {
+    return ctx.isWinner ? "celebrate" : "idle";
+  }
+  if (ctx.phase === "PRE_GAME" || ctx.phase === "HALFTIME" || ctx.phase === "FINISHED") {
+    return "idle";
+  }
+
   // 1. Shooter: stay in shoot state while the shot is still in the air
   if (ctx.shotInFlight && ctx.shooterId === ctx.simPlayer.id) {
     return "shoot";

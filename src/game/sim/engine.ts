@@ -192,18 +192,24 @@ export function createInitialSimState(
 
   const ballHandler = players[0];
 
+  // Assign warm-up targets initially
+  assignWarmupTargets(players);
+
   return {
+    phase: "PRE_GAME",
     players,
     bench,
     ballPosition: { ...ballHandler.position },
     ballHeight: 3.5, // held at waist height
     possession: { team: "home", ballHandlerId: ballHandler.id },
-    gameClock: { remaining: settings.halfLength, half: 1, running: true },
-    shotClock: { remaining: settings.shotClockLength, running: true },
+    gameClock: { remaining: settings.halfLength, half: 1, running: false },
+    shotClock: { remaining: settings.shotClockLength, running: false },
     score: { home: 0, away: 0 },
     teamFouls: { home: 0, away: 0 },
     playerStats,
+    _timeSinceLastAction: 0,
     shotInFlight: false,
+    _timeSinceLastTargetAssign: 0,
     events: [],
   };
 }
@@ -395,6 +401,17 @@ function assignTargets(
   });
 }
 
+/** Assign pre-game/warm-up positions (players near their own bench area). */
+function assignWarmupTargets(players: SimPlayer[]): void {
+  players.forEach((p) => {
+    const isHome = p.teamId === "home";
+    p.targetPosition = {
+      x: isHome ? -35 + (Math.random() - 0.5) * 10 : 35 + (Math.random() - 0.5) * 10,
+      y: (Math.random() - 0.5) * 20,
+    };
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Main tick
 // ---------------------------------------------------------------------------
@@ -409,8 +426,7 @@ interface TickContext {
   timeSinceLastAction: number;
 }
 
-let _timeSinceLastAction = 0;
-let _timeSinceLastTargetAssign = 0;
+
 
 /**
  * Advance the simulation by `dt` seconds.
@@ -438,43 +454,77 @@ export function tick(
     events: [],
   };
 
-  const ctx: TickContext = { state, dt, events: [], settings, timeSinceLastAction: _timeSinceLastAction };
-  _timeSinceLastAction += dt;
-  _timeSinceLastTargetAssign += dt;
+  const ctx: TickContext = { state, dt, events: [], settings, timeSinceLastAction: state._timeSinceLastAction };
+  state._timeSinceLastAction += dt;
+  state._timeSinceLastTargetAssign += dt;
 
-  // 1) Clocks
-  tickClocks(ctx);
+  // 1) Phase Logic
+  switch (state.phase) {
+    case "PRE_GAME":
+      if (state._timeSinceLastAction > 2.0) {
+        state.phase = "TIP_OFF";
+        state._timeSinceLastAction = 0;
+        ctx.events.push({ type: "possession_change", message: "GET READY!" });
+      }
+      break;
 
-  // 2) If game/half ended, stop here
-  if (!state.gameClock.running) {
-    state.events = ctx.events;
-    return state;
+    case "TIP_OFF":
+      if (state._timeSinceLastAction > 1.2) {
+        state.phase = "IN_PLAY";
+        state.gameClock.running = true;
+        state.shotClock.running = true;
+        state._timeSinceLastAction = 0;
+        ctx.events.push({ type: "possession_change", message: "TIP OFF!" });
+      }
+      break;
+
+    case "HALFTIME":
+      if (state._timeSinceLastAction > 3.0) {
+        state.phase = "IN_PLAY";
+        state.gameClock.running = true;
+        state.shotClock.running = true;
+        state._timeSinceLastAction = 0;
+        ctx.events.push({ type: "possession_change", message: "2nd HALF START!" });
+      }
+      break;
+
+    case "FULL_TIME":
+      state.gameClock.running = false;
+      state.shotClock.running = false;
+      if (state._timeSinceLastAction > 4.0) {
+        state.phase = "FINISHED";
+        state._timeSinceLastAction = 0;
+      }
+      break;
+
+    case "FINISHED":
+      state.gameClock.running = false;
+      state.shotClock.running = false;
+      break;
+
+    case "IN_PLAY":
+      // Clocks
+      tickClocks(ctx);
+
+      // Reassign movement targets periodically
+      if (state._timeSinceLastTargetAssign > 2.5) {
+        assignTargets(state.players, state.possession.team, state.possession.ballHandlerId);
+        state._timeSinceLastTargetAssign = 0;
+      }
+
+      // Shot resolution
+      if (state.shotInFlight) {
+        resolveShotInFlight(ctx);
+      } else {
+        tickBallHandler(ctx);
+      }
+      break;
   }
 
-  // 3) Reassign movement targets periodically
-  if (_timeSinceLastTargetAssign > 2.5) {
-    assignTargets(state.players, state.possession.team, state.possession.ballHandlerId);
-    _timeSinceLastTargetAssign = 0;
-  }
-
-  // 4) Shot in flight resolution
-  if (state.shotInFlight) {
-    resolveShotInFlight(ctx);
-  } else {
-    // 5) Ball-handler AI: pass or shoot (may also commit a non-shooting foul)
-    tickBallHandler(ctx);
-  }
-
-  // 6) Move all players toward targets and update stamina
+  // 2) Standard physical updates (regardless of phase)
   tickMovement(ctx);
-
-  // 7) Recover bench stamina and track minutes played
   tickBench(ctx);
-
-  // 8) Check for substitutions (fatigue or foul-out)
   tickSubstitutions(ctx);
-
-  // 9) Update ball position to follow handler or flight arc
   tickBallPosition(ctx);
 
   state.events = ctx.events;
@@ -492,15 +542,19 @@ function tickClocks(ctx: TickContext): void {
     state.gameClock.remaining = Math.max(0, state.gameClock.remaining - dt);
     if (state.gameClock.remaining <= 0) {
       if (state.gameClock.half === 1) {
-        // Half-time: start the second half
+        // Prepare for second half
+        state.phase = "HALFTIME";
         state.gameClock.half = 2;
+        state.gameClock.running = false;
+        state.shotClock.running = false;
         state.gameClock.remaining = settings.halfLength;
         state.shotClock.remaining = settings.shotClockLength;
+
         // Reset team fouls for the new half
         state.teamFouls = { home: 0, away: 0 };
-        // Swap possession and hand the ball to the new team's first player
-        const newHalfTeam: PossessionTeam =
-          state.possession.team === "home" ? "away" : "home";
+
+        // Swap possession
+        const newHalfTeam: PossessionTeam = state.possession.team === "home" ? "away" : "home";
         state.possession.team = newHalfTeam;
         const newHalfHandler = state.players.find((p) => p.teamId === newHalfTeam);
         if (newHalfHandler) {
@@ -508,15 +562,21 @@ function tickClocks(ctx: TickContext): void {
           newHalfHandler.hasBall = true;
           state.possession.ballHandlerId = newHalfHandler.id;
         }
-        _timeSinceLastAction = 0;
-        _timeSinceLastTargetAssign = 0;
-        ctx.events.push({ type: "half_end", message: "End of 1st half" });
-        // Reassign all targets for the new half
+
+        state._timeSinceLastAction = 0;
+        state._timeSinceLastTargetAssign = 0;
+        ctx.events.push({ type: "half_end", message: "HALFTIME" });
+
+        // Re-calculate positions for side swap (home now attacks left)
         assignTargets(state.players, state.possession.team, state.possession.ballHandlerId);
       } else {
+        state.phase = "FULL_TIME";
         state.gameClock.running = false;
         state.shotClock.running = false;
-        ctx.events.push({ type: "game_end", message: "Game over!" });
+        state.gameClock.remaining = 0;
+        state.shotClock.remaining = 0;
+        state._timeSinceLastAction = 0;
+        ctx.events.push({ type: "game_end", message: "Final Buzzer — Game Over!" });
         return;
       }
     }
@@ -547,7 +607,7 @@ function tickBallHandler(ctx: TickContext): void {
   // ── Non-shooting foul detection ───────────────────────────────────────────
   // A defender who is very close to a driving ball handler may commit a
   // non-shooting foul.  Bonus rules determine whether FTs are awarded.
-  if (_timeSinceLastAction > PASS_INTERVAL_MIN && distToBasket < 18) {
+  if (state._timeSinceLastAction > PASS_INTERVAL_MIN && distToBasket < 18) {
     const defTeam = handler.teamId === "home" ? "away" : "home";
     const defenders = state.players.filter((p) => p.teamId === defTeam);
 
@@ -583,13 +643,13 @@ function tickBallHandler(ctx: TickContext): void {
 
   const effectiveShotChance = SHOT_CHANCE_PER_SECOND * shootingBias * distFactor * dt;
 
-  if (_timeSinceLastAction > PASS_INTERVAL_MIN && Math.random() < effectiveShotChance) {
+  if (state._timeSinceLastAction > PASS_INTERVAL_MIN && Math.random() < effectiveShotChance) {
     attemptShot(ctx, handler);
     return;
   }
 
   // Pass: prefer to pass to the most open teammate
-  if (_timeSinceLastAction > PASS_INTERVAL_MIN && Math.random() < 0.3 * dt) {
+  if (state._timeSinceLastAction > PASS_INTERVAL_MIN && Math.random() < 0.3 * dt) {
     const target = findOpenTeammate(state.players, handler.id, handler.teamId);
     if (target) {
       executePass(ctx, handler, target);
@@ -649,7 +709,7 @@ function resolveNonShootingFoul(
   } else {
     // No FTs — just reset the shot clock and keep possession
     state.shotClock.remaining = settings.shotClockLength;
-    _timeSinceLastAction = 0;
+    state._timeSinceLastAction = 0;
     ctx.events.push({
       type: "non_shooting_foul",
       teamId: foulerTeam,
@@ -736,7 +796,7 @@ function attemptShot(ctx: TickContext, shooter: SimPlayer): void {
   state.ballPosition = { ...shooter.position };
   state.ballHeight = BALL_HELD_HEIGHT;
 
-  _timeSinceLastAction = 0;
+  state._timeSinceLastAction = 0;
 }
 
 /**
@@ -1013,7 +1073,7 @@ function resolveRebound(ctx: TickContext, basketPos: CourtPosition): void {
     // Offensive rebound: same team keeps possession, shot clock resets
     state.possession.ballHandlerId = rebounder.id;
     state.shotClock.remaining = settings.shotClockLength;
-    _timeSinceLastAction = 0;
+    state._timeSinceLastAction = 0;
     ctx.events.push({
       type: "rebound",
       playerId: rebounder.id,
@@ -1025,8 +1085,8 @@ function resolveRebound(ctx: TickContext, basketPos: CourtPosition): void {
     state.possession.team = rebounder.teamId as PossessionTeam;
     state.possession.ballHandlerId = rebounder.id;
     state.shotClock.remaining = settings.shotClockLength;
-    _timeSinceLastAction = 0;
-    _timeSinceLastTargetAssign = 0;
+    state._timeSinceLastAction = 0;
+    state._timeSinceLastTargetAssign = 0;
     assignTargets(state.players, rebounder.teamId as PossessionTeam, rebounder.id);
     ctx.events.push({
       type: "rebound",
@@ -1073,8 +1133,8 @@ function executePass(ctx: TickContext, from: SimPlayer, to: SimPlayer): void {
         state.possession.team = nearestDef.player.teamId as PossessionTeam;
         state.possession.ballHandlerId = nearestDef.player.id;
         state.shotClock.remaining = ctx.settings.shotClockLength;
-        _timeSinceLastAction = 0;
-        _timeSinceLastTargetAssign = 0;
+        state._timeSinceLastAction = 0;
+        state._timeSinceLastTargetAssign = 0;
         assignTargets(state.players, nearestDef.player.teamId as PossessionTeam, nearestDef.player.id);
 
         if (state.playerStats[nearestDef.player.id]) {
@@ -1102,7 +1162,7 @@ function executePass(ctx: TickContext, from: SimPlayer, to: SimPlayer): void {
   state.possession.ballHandlerId = to.id;
   // Track the passer as an assist candidate for the next shot made
   state._lastPassFromId = from.id;
-  _timeSinceLastAction = 0;
+  state._timeSinceLastAction = 0;
 
   ctx.events.push({
     type: "pass",
@@ -1116,8 +1176,8 @@ function changePossession(ctx: TickContext): void {
   const newTeam: PossessionTeam = state.possession.team === "home" ? "away" : "home";
   state.possession.team = newTeam;
   state.shotClock.remaining = settings.shotClockLength;
-  _timeSinceLastAction = 0;
-  _timeSinceLastTargetAssign = 0;
+  state._timeSinceLastAction = 0;
+  state._timeSinceLastTargetAssign = 0;
   // A possession change clears any pending assist
   state._lastPassFromId = undefined;
 
@@ -1212,7 +1272,7 @@ function tickSubstitutions(ctx: TickContext): void {
 
     // Re-assign targets after the lineup change
     assignTargets(state.players, state.possession.team, state.possession.ballHandlerId);
-    _timeSinceLastTargetAssign = 0;
+    state._timeSinceLastTargetAssign = 0;
   }
 }
 
@@ -1227,8 +1287,7 @@ function tickBallPosition(ctx: TickContext): void {
   }
 }
 
-/** Reset engine-level accumulators (call when starting a new game). */
+/** No longer needed as accumulators are part of SimulationState. */
 export function resetSimEngine(): void {
-  _timeSinceLastAction = 0;
-  _timeSinceLastTargetAssign = 0;
+  // empty
 }

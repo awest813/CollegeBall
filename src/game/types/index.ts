@@ -138,8 +138,11 @@ export interface PlayerGameStats {
   minutesPlayed: number;
 }
 
-/** The full snapshot produced by the simulation every tick. */
+export type MatchPhase = "PRE_GAME" | "TIP_OFF" | "IN_PLAY" | "HALFTIME" | "FULL_TIME" | "FINISHED";
+
+/** THE full snapshot produced by the simulation every tick. */
 export interface SimulationState {
+  phase: MatchPhase;
   players: SimPlayer[];
   /** Players on the bench (not currently on court), per team. */
   bench: SimPlayer[];
@@ -166,6 +169,10 @@ export interface SimulationState {
   _shooterId?: string;
   /** Internal: ID of the player who last completed a pass (for assist attribution). */
   _lastPassFromId?: string;
+  /** Internal: accumulated time since last AI action (pass/shoot). */
+  _timeSinceLastAction: number;
+  /** Internal: accumulated time since last movement target reassignment. */
+  _timeSinceLastTargetAssign: number;
   /** Event log for the current tick (e.g. "shot_made", "turnover"). */
   events: SimEvent[];
 }

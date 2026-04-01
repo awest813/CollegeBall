@@ -19,6 +19,7 @@ import Scoreboard from "../ui/Scoreboard";
 import GameControls from "../ui/GameControls";
 import EventFeed from "../ui/EventFeed";
 import PostGameOverlay from "../ui/PostGameOverlay";
+import MatchPhaseOverlay from "../ui/MatchPhaseOverlay";
 
 export default function GameScreen() {
   const bridgeRef = useRef<RenderBridge | null>(null);
@@ -92,6 +93,7 @@ export default function GameScreen() {
       <Scoreboard />
       <GameControls />
       <EventFeed />
+      <MatchPhaseOverlay />
 
       {/* End-of-game summary (renders on top when game finishes) */}
       <PostGameOverlay />

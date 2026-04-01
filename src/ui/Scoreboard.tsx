@@ -21,6 +21,19 @@ function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+function phaseBadgeLabel(phase: string): string | null {
+  switch (phase) {
+    case "PRE_GAME":
+      return "Warmup";
+    case "TIP_OFF":
+      return "Tip Off";
+    case "HALFTIME":
+      return "Halftime";
+    default:
+      return null;
+  }
+}
+
 export default function Scoreboard() {
   const score = useGameStore((s) => s.score);
   const gameClock = useGameStore((s) => s.gameClock);
@@ -31,10 +44,12 @@ export default function Scoreboard() {
   const simStatus = useGameStore((s) => s.simStatus);
   const teamFouls = useGameStore((s) => s.teamFouls);
   const settings = useGameStore((s) => s.settings);
+  const phase = useGameStore((s) => s.phase);
 
   const isFinished = simStatus === "finished";
   const shotClockUrgent =
     !isFinished && shotClock.remaining <= 5 && shotClock.running;
+  const phaseBadge = !isFinished ? phaseBadgeLabel(phase) : null;
 
   // Bonus status is determined by the *opponent's* foul count
   // (home team fouls put away team in bonus, and vice versa)
@@ -65,7 +80,7 @@ export default function Scoreboard() {
 
         {/* ── Centre: clocks ─────────────────────────── */}
         <div
-          className="flex flex-col items-center justify-center px-5 py-2 min-w-[110px]"
+          className="flex flex-col items-center justify-center px-5 py-2 min-w-[118px]"
           style={{ background: "rgba(10,10,16,0.92)" }}
         >
           {/* Game clock */}
@@ -77,6 +92,19 @@ export default function Scoreboard() {
           <span className="text-gray-400 text-[10px] font-semibold tracking-widest uppercase mt-0.5">
             {isFinished ? "Final" : gameClock.half === 1 ? "1st Half" : "2nd Half"}
           </span>
+
+          {phaseBadge && (
+            <span
+              className="mt-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold tracking-[0.22em] uppercase"
+              style={{
+                color: "#f5d46b",
+                background: "rgba(245,212,107,0.12)",
+                border: "1px solid rgba(245,212,107,0.18)",
+              }}
+            >
+              {phaseBadge}
+            </span>
+          )}
 
           {/* Shot clock */}
           <div

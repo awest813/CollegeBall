@@ -48,7 +48,7 @@ function makeTeam(
 describe("createInitialSimState", () => {
   beforeEach(() => resetSimEngine());
 
-  it("places five per side, home has ball, clocks running", () => {
+  it("places five per side, home has ball, and starts in warmup", () => {
     const h = ["h1", "h2", "h3", "h4", "h5"];
     const a = ["a1", "a2", "a3", "a4", "a5"];
     const home = makeTeam("home", "Home", h);
@@ -64,8 +64,9 @@ describe("createInitialSimState", () => {
     expect(s.possession.team).toBe("home");
     expect(s.possession.ballHandlerId).toBe(h[0]);
     expect(s.gameClock.half).toBe(1);
-    expect(s.gameClock.running).toBe(true);
-    expect(s.shotClock.running).toBe(true);
+    expect(s.gameClock.running).toBe(false);
+    expect(s.shotClock.running).toBe(false);
+    expect(s.phase).toBe("PRE_GAME");
     expect(Object.keys(s.playerStats)).toHaveLength(10);
   });
 });
@@ -73,7 +74,7 @@ describe("createInitialSimState", () => {
 describe("tick — match flow", () => {
   beforeEach(() => resetSimEngine());
 
-  it("reaches second half then ends the game", () => {
+  it("progresses through tip-off, halftime, second half, and game end", () => {
     const h = ["h1", "h2", "h3", "h4", "h5"];
     const a = ["a1", "a2", "a3", "a4", "a5"];
     const home = makeTeam("home", "Home", h);
@@ -81,16 +82,28 @@ describe("tick — match flow", () => {
 
     let state = createInitialSimState(home, away, tinySettings);
     const dt = 1 / 60;
+    let sawTipOff = false;
+    let sawHalftime = false;
+    let sawSecondHalf = false;
     let sawHalf2 = false;
+    let sawInPlay = false;
 
     for (let i = 0; i < 500_000; i++) {
       state = tick(state, dt, tinySettings);
+      if (state.phase === "TIP_OFF") sawTipOff = true;
+      if (state.phase === "HALFTIME") sawHalftime = true;
+      if (state.phase === "IN_PLAY") sawInPlay = true;
+      if (state.phase === "IN_PLAY" && state.gameClock.half === 2) sawSecondHalf = true;
       if (state.gameClock.half === 2) sawHalf2 = true;
-      if (!state.gameClock.running) break;
+      if (state.phase === "FULL_TIME") break;
     }
 
+    expect(sawTipOff).toBe(true);
+    expect(sawInPlay).toBe(true);
+    expect(sawHalftime).toBe(true);
+    expect(sawSecondHalf).toBe(true);
     expect(sawHalf2).toBe(true);
-    expect(state.gameClock.running).toBe(false);
+    expect(state.phase).toBe("FULL_TIME");
     expect(state.gameClock.half).toBe(2);
     expect(state.events.some((e) => e.type === "game_end")).toBe(true);
   });

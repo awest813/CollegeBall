@@ -21,6 +21,7 @@ import type {
   SimPlayer,
   CameraMode,
   PlayerGameStats,
+  MatchPhase,
 } from "../game/types";
 import {
   defaultHomeTeam,
@@ -61,6 +62,8 @@ export interface GameStore {
   teamFouls: { home: number; away: number };
   /** Per-player game statistics accumulated across the full game. */
   playerStats: Record<string, PlayerGameStats>;
+  /** The current phase of the match (e.g. PRE_GAME, IN_PLAY, FULL_TIME). */
+  phase: MatchPhase;
 
   // ---- Actions ----
   /** Initialise a new exhibition game with default data. */
@@ -100,6 +103,7 @@ export const useGameStore = create<GameStore>((set) => ({
   shotInFlight: false,
   teamFouls: { home: 0, away: 0 },
   playerStats: {},
+  phase: "PRE_GAME" as MatchPhase,
 
   // Actions
   startExhibition: () =>
@@ -109,14 +113,15 @@ export const useGameStore = create<GameStore>((set) => ({
       score: { home: 0, away: 0 },
       teamFouls: { home: 0, away: 0 },
       playerStats: {},
+      phase: "PRE_GAME" as MatchPhase,
       gameClock: {
         remaining: defaultGameSettings.halfLength,
         half: 1,
-        running: true,
+        running: false,
       },
       shotClock: {
         remaining: defaultGameSettings.shotClockLength,
-        running: true,
+        running: false,
       },
       possession: {
         team: "home",
@@ -140,5 +145,6 @@ export const useGameStore = create<GameStore>((set) => ({
       shotInFlight: state.shotInFlight,
       teamFouls: state.teamFouls,
       playerStats: state.playerStats,
+      phase: state.phase,
     }),
 }));

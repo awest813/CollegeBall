@@ -213,6 +213,10 @@ export class RenderBridge {
         desired = override.name;
       } else {
         const isDefending = sp.teamId !== state.possession.team;
+        const isWinner = state.phase === "FULL_TIME" || state.phase === "FINISHED" 
+          ? (sp.teamId === "home" ? state.score.home > state.score.away : state.score.away > state.score.home)
+          : false;
+
         const ctx: PlayerAnimContext = {
           simPlayer:    sp,
           hasBall:      sp.hasBall,
@@ -220,6 +224,8 @@ export class RenderBridge {
           speed,
           shotInFlight: state.shotInFlight,
           shooterId:    state._shooterId,
+          phase:        state.phase,
+          isWinner,
         };
         desired = resolveAnimationState(ctx, current);
       }

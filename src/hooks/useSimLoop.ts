@@ -44,7 +44,7 @@ export function useSimLoop(): SimLoopController {
   useEffect(() => {
     if (simStatus === "running") {
       const needsInit =
-        stateRef.current === null || !stateRef.current.gameClock.running;
+        stateRef.current === null || stateRef.current.phase === "FINISHED";
       if (needsInit) {
         resetSimEngine();
         accumulatorRef.current = 0;
@@ -62,9 +62,9 @@ export function useSimLoop(): SimLoopController {
       if (simStatus !== "running" || !stateRef.current) return;
 
       // `useEffect` can run after the first post-"Play Again" render frame. If we still
-      // hold the previous game's ended snapshot, re-init here so the sim never ticks
-      // a finished match or flashes stale FINAL/score state.
-      if (!stateRef.current.gameClock.running) {
+      // hold the previous game's finished snapshot, re-init here so the sim never ticks
+      // a stale FINAL state before the fresh match snapshot is installed.
+      if (stateRef.current.phase === "FINISHED") {
         resetSimEngine();
         accumulatorRef.current = 0;
         stateRef.current = createInitialSimState(homeTeam, awayTeam, settings);
@@ -82,7 +82,7 @@ export function useSimLoop(): SimLoopController {
         ticked = true;
 
         // Check for game end
-        if (!stateRef.current.gameClock.running && stateRef.current.gameClock.half === 2) {
+        if (stateRef.current.phase === "FINISHED") {
           useGameStore.getState().setSimStatus("finished");
           break;
         }
