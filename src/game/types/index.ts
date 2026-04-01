@@ -190,3 +190,16 @@ export type AnimationStateName =
   | "rebound"
   | "celebrate"
   | "transition";
+
+// ---------------------------------------------------------------------------
+// Camera
+// ---------------------------------------------------------------------------
+
+/**
+ * Available in-game camera perspectives.
+ *
+ *   broadcast – long-sideline TV angle following the ball (default)
+ *   overhead   – top-down birds-eye view
+ *   endzone    – behind-the-basket angle looking down the court
+ */
+export type CameraMode = "broadcast" | "overhead" | "endzone";

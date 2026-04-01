@@ -19,6 +19,7 @@ import type {
   SimulationState,
   GameSettings,
   SimPlayer,
+  CameraMode,
 } from "../game/types";
 import {
   defaultHomeTeam,
@@ -41,8 +42,10 @@ export interface GameStore {
   // ---- Simulation control ----
   simStatus: SimStatus;
   gameSpeed: GameSpeed;
+  cameraMode: CameraMode;
   setSimStatus: (s: SimStatus) => void;
   setGameSpeed: (s: GameSpeed) => void;
+  setCameraMode: (m: CameraMode) => void;
 
   // ---- Live game state (written by sim each tick) ----
   score: ScoreState;
@@ -76,8 +79,10 @@ export const useGameStore = create<GameStore>((set) => ({
   // Simulation control
   simStatus: "idle",
   gameSpeed: 1,
+  cameraMode: "broadcast" as CameraMode,
   setSimStatus: (simStatus) => set({ simStatus }),
   setGameSpeed: (gameSpeed) => set({ gameSpeed }),
+  setCameraMode: (cameraMode) => set({ cameraMode }),
 
   // Live game state defaults
   score: { home: 0, away: 0 },
