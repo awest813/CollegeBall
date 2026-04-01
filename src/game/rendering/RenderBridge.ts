@@ -24,7 +24,7 @@
  */
 
 import { Scene, Mesh, Vector3, MeshBuilder, StandardMaterial, Color3 } from "@babylonjs/core";
-import type { SimulationState, Team } from "../types";
+import type { SimulationState, Team, CameraMode } from "../types";
 import {
   createPlayerVisual,
   updatePlayerVisual,
@@ -169,6 +169,11 @@ export class RenderBridge {
         state.ballPosition.y
       );
     }
+  }
+
+  /** Switch the active camera perspective. Has no effect before init(). */
+  setCameraMode(mode: CameraMode): void {
+    this.broadcastCamera?.setMode(mode);
   }
 
   /** Clean up all created meshes and clear the material cache. */

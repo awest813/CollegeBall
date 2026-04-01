@@ -4,7 +4,7 @@
  * Combines:
  *   • BabylonCanvas (3D court renderer)
  *   • Simulation loop (via useSimLoop hook)
- *   • HUD overlays (scoreboard, controls, event feed)
+ *   • HUD overlays (scoreboard, controls, event feed, post-game)
  *   • Render bridge (syncs sim state → Babylon meshes, owns broadcast camera)
  */
 
@@ -18,6 +18,7 @@ import { useGameStore } from "../store/gameStore";
 import Scoreboard from "../ui/Scoreboard";
 import GameControls from "../ui/GameControls";
 import EventFeed from "../ui/EventFeed";
+import PostGameOverlay from "../ui/PostGameOverlay";
 
 export default function GameScreen() {
   const bridgeRef = useRef<RenderBridge | null>(null);
@@ -26,6 +27,14 @@ export default function GameScreen() {
 
   const homeTeam = useGameStore((s) => s.homeTeam);
   const awayTeam = useGameStore((s) => s.awayTeam);
+  const cameraMode = useGameStore((s) => s.cameraMode);
+
+  // Forward camera mode changes to the bridge whenever the store value changes
+  const prevCameraMode = useRef(cameraMode);
+  if (cameraMode !== prevCameraMode.current) {
+    prevCameraMode.current = cameraMode;
+    bridgeRef.current?.setCameraMode(cameraMode);
+  }
 
   const onSceneReady = useCallback(
     (scene: Scene) => {
@@ -41,6 +50,8 @@ export default function GameScreen() {
         const simState = simLoop.getState();
         if (simState) {
           bridge.init(simState, homeTeam, awayTeam);
+          // Apply current camera mode (may have changed before scene was ready)
+          bridge.setCameraMode(useGameStore.getState().cameraMode);
           sceneReadyRef.current = true;
         } else {
           setTimeout(tryInit, 50);
@@ -81,6 +92,10 @@ export default function GameScreen() {
       <Scoreboard />
       <GameControls />
       <EventFeed />
+
+      {/* End-of-game summary (renders on top when game finishes) */}
+      <PostGameOverlay />
     </div>
   );
 }
+

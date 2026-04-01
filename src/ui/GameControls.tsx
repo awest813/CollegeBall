@@ -1,19 +1,26 @@
 /**
- * GameControls – play/pause and speed controls overlay.
+ * GameControls – play/pause, speed controls, and camera mode toggle.
  * Styled with a broadcast-inspired control bar.
  */
 
 import { useGameStore } from "../store/gameStore";
-import type { GameSpeed } from "../game/types";
+import type { GameSpeed, CameraMode } from "../game/types";
 
 const SPEEDS: GameSpeed[] = [1, 2, 4];
 
+const CAMERA_MODES: { mode: CameraMode; label: string; title: string }[] = [
+  { mode: "broadcast", label: "📺", title: "Broadcast (side-court)" },
+  { mode: "overhead",  label: "🦅", title: "Overhead (top-down)" },
+  { mode: "endzone",   label: "🏀", title: "Endzone (behind basket)" },
+];
+
 export default function GameControls() {
-  const simStatus = useGameStore((s) => s.simStatus);
-  const gameSpeed = useGameStore((s) => s.gameSpeed);
-  const setSimStatus = useGameStore((s) => s.setSimStatus);
-  const setGameSpeed = useGameStore((s) => s.setGameSpeed);
-  const setScreen = useGameStore((s) => s.setScreen);
+  const simStatus   = useGameStore((s) => s.simStatus);
+  const gameSpeed   = useGameStore((s) => s.gameSpeed);
+  const cameraMode  = useGameStore((s) => s.cameraMode);
+  const setSimStatus  = useGameStore((s) => s.setSimStatus);
+  const setGameSpeed  = useGameStore((s) => s.setGameSpeed);
+  const setCameraMode = useGameStore((s) => s.setCameraMode);
 
   const isPlayable = simStatus === "running" || simStatus === "paused";
   const isFinished = simStatus === "finished";
@@ -24,7 +31,35 @@ export default function GameControls() {
   };
 
   return (
-    <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-20 select-none">
+    <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-20 select-none flex flex-col items-center gap-2">
+      {/* ── Camera mode picker ───────────────────────────────────────── */}
+      <div
+        className="flex items-center gap-1 rounded-full px-3 py-1.5 shadow-lg"
+        style={{
+          background: "rgba(8,8,16,0.75)",
+          border: "1px solid rgba(255,255,255,0.08)",
+        }}
+      >
+        <span className="text-gray-500 text-[10px] font-semibold tracking-widest uppercase mr-1">
+          Cam
+        </span>
+        {CAMERA_MODES.map(({ mode, label, title }) => (
+          <button
+            key={mode}
+            onClick={() => setCameraMode(mode)}
+            title={title}
+            className={`px-2.5 py-1 rounded-full text-sm transition-all ${
+              cameraMode === mode
+                ? "bg-white/20 text-white shadow"
+                : "text-white/40 hover:text-white/70"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Playback controls ────────────────────────────────────────── */}
       <div
         className="flex items-center gap-2 rounded-full px-5 py-2.5 shadow-xl"
         style={{
@@ -59,19 +94,8 @@ export default function GameControls() {
             {s}×
           </button>
         ))}
-
-        {isFinished && (
-          <>
-            <div className="w-px h-5 bg-white/15 mx-1" />
-            <button
-              onClick={() => setScreen("menu")}
-              className="px-3 py-1 rounded-full text-xs font-bold tracking-wider text-white/70 hover:text-white transition-colors"
-            >
-              Menu
-            </button>
-          </>
-        )}
       </div>
     </div>
   );
 }
+
