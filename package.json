@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@babylonjs/core": "^6.11.2",
+    "@babylonjs/loaders": "^6.11.2",
     "babylonjs-hook": "^0.1.1",
     "pepjs": "^0.5.3",
     "react": "^18.2.0",
@@ -18,7 +19,6 @@
     "zustand": "^5.0.12"
   },
   "devDependencies": {
-    "@babylonjs/loaders": "^6.11.2",
     "@types/react": "^18.2.14",
     "@types/react-dom": "^18.2.6",
     "@typescript-eslint/eslint-plugin": "^5.61.0",
