@@ -35,7 +35,8 @@ export function basketPosition(team: PossessionTeam): CourtPosition {
 
 /** Get the offensive half-court centre for a team. */
 export function offensiveCenter(team: PossessionTeam): CourtPosition {
-  return { x: team === "home" ? -HALF_LENGTH / 2 : HALF_LENGTH / 2, y: 0 };
+  // Home attacks the RIGHT basket (positive x); away attacks the LEFT basket (negative x).
+  return { x: team === "home" ? HALF_LENGTH / 2 : -HALF_LENGTH / 2, y: 0 };
 }
 
 /** Clamp a position to stay within court bounds (with small padding). */
