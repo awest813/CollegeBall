@@ -164,3 +164,21 @@ export interface GameSettings {
   halfLength: number; // seconds per half
   shotClockLength: number; // seconds
 }
+
+// ---------------------------------------------------------------------------
+// Animation (visual layer — referenced by rendering but defined here for
+// shared access across features that may query current anim state)
+// ---------------------------------------------------------------------------
+
+export type AnimationStateName =
+  | "idle"
+  | "jog"
+  | "run"
+  | "defensive_stance"
+  | "shuffle"
+  | "dribble_idle"
+  | "pass"
+  | "shoot"
+  | "rebound"
+  | "celebrate"
+  | "transition";

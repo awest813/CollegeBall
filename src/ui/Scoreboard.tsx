@@ -1,11 +1,20 @@
 /**
- * Scoreboard HUD – displays score, clocks, possession, and game controls.
- * Styled with Tailwind for a clean broadcast-inspired look.
+ * Scoreboard – broadcast-inspired scorebug HUD.
+ *
+ * Displays:
+ *   • Team abbreviations with primary-colour accents
+ *   • Live score (large, high-contrast)
+ *   • Possession indicator arrow
+ *   • Game clock with half label
+ *   • Shot clock (turns red below 5 s)
+ *   • FINAL badge on game end
+ *
+ * Styled to read cleanly at any resolution while feeling like a real
+ * sports title rather than a debug overlay.
  */
 
 import { useGameStore } from "../store/gameStore";
 
-/** Format seconds → "MM:SS" */
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
@@ -21,63 +30,134 @@ export default function Scoreboard() {
   const awayTeam = useGameStore((s) => s.awayTeam);
   const simStatus = useGameStore((s) => s.simStatus);
 
-  return (
-    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 select-none">
-      <div className="flex items-center gap-1 bg-black/80 rounded-lg overflow-hidden shadow-lg border border-white/10">
-        {/* Home team */}
-        <div className="flex items-center gap-2 px-4 py-2">
-          <div
-            className="w-3 h-3 rounded-full"
-            style={{ backgroundColor: homeTeam.primaryColor }}
-          />
-          <span className="text-white font-bold text-sm tracking-wide">
-            {homeTeam.abbreviation}
-          </span>
-          {possession.team === "home" && (
-            <span className="text-yellow-400 text-xs">●</span>
-          )}
-          <span className="text-white font-mono text-2xl font-bold ml-2">
-            {score.home}
-          </span>
-        </div>
+  const shotClockUrgent = shotClock.remaining <= 5 && shotClock.running;
+  const isFinished = simStatus === "finished";
 
-        {/* Centre: clocks */}
-        <div className="flex flex-col items-center px-4 py-1 border-x border-white/10 min-w-[100px]">
-          <span className="text-white font-mono text-xl font-bold">
+  return (
+    <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 select-none">
+      <div
+        className="flex items-stretch rounded-xl overflow-hidden shadow-2xl"
+        style={{ border: "1px solid rgba(255,255,255,0.12)" }}
+      >
+        {/* ── Home team ──────────────────────────────── */}
+        <TeamPanel
+          abbreviation={homeTeam.abbreviation}
+          score={score.home}
+          primaryColor={homeTeam.primaryColor}
+          hasPossession={possession.team === "home"}
+          possessionSide="right"
+        />
+
+        {/* ── Centre: clocks ─────────────────────────── */}
+        <div
+          className="flex flex-col items-center justify-center px-5 py-2 min-w-[110px]"
+          style={{ background: "rgba(10,10,16,0.92)" }}
+        >
+          {/* Game clock */}
+          <span className="text-white font-mono text-2xl font-black tracking-tight leading-none">
             {formatTime(gameClock.remaining)}
           </span>
-          <div className="flex items-center gap-2">
-            <span className="text-gray-400 text-xs">
-              {gameClock.half === 1 ? "1ST" : "2ND"}
-            </span>
-            <span className={`font-mono text-sm font-bold ${
-              shotClock.remaining <= 5 ? "text-red-400" : "text-yellow-300"
-            }`}>
-              {Math.ceil(shotClock.remaining)}
-            </span>
+
+          {/* Half label */}
+          <span className="text-gray-400 text-[10px] font-semibold tracking-widest uppercase mt-0.5">
+            {gameClock.half === 1 ? "1st Half" : "2nd Half"}
+          </span>
+
+          {/* Shot clock */}
+          <div
+            className={`mt-1 px-2 py-0.5 rounded font-mono text-sm font-bold leading-none ${
+              shotClockUrgent
+                ? "bg-red-600 text-white"
+                : "bg-white/10 text-yellow-300"
+            }`}
+          >
+            {Math.ceil(shotClock.remaining)}
           </div>
-          {simStatus === "finished" && (
-            <span className="text-red-400 text-xs font-bold">FINAL</span>
+
+          {isFinished && (
+            <span className="mt-1 text-red-400 text-[10px] font-extrabold tracking-widest uppercase">
+              FINAL
+            </span>
           )}
         </div>
 
-        {/* Away team */}
-        <div className="flex items-center gap-2 px-4 py-2">
-          <span className="text-white font-mono text-2xl font-bold mr-2">
-            {score.away}
-          </span>
-          {possession.team === "away" && (
-            <span className="text-yellow-400 text-xs">●</span>
-          )}
-          <span className="text-white font-bold text-sm tracking-wide">
-            {awayTeam.abbreviation}
-          </span>
-          <div
-            className="w-3 h-3 rounded-full"
-            style={{ backgroundColor: awayTeam.primaryColor }}
-          />
-        </div>
+        {/* ── Away team ──────────────────────────────── */}
+        <TeamPanel
+          abbreviation={awayTeam.abbreviation}
+          score={score.away}
+          primaryColor={awayTeam.primaryColor}
+          hasPossession={possession.team === "away"}
+          possessionSide="left"
+        />
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sub-component: one team's side of the scorebug
+// ---------------------------------------------------------------------------
+
+interface TeamPanelProps {
+  abbreviation: string;
+  score: number;
+  primaryColor: string;
+  hasPossession: boolean;
+  possessionSide: "left" | "right";
+}
+
+function TeamPanel({
+  abbreviation,
+  score,
+  primaryColor,
+  hasPossession,
+  possessionSide,
+}: TeamPanelProps) {
+  const isRight = possessionSide === "right";
+
+  return (
+    <div
+      className={`flex items-center gap-3 px-4 py-3 ${isRight ? "pr-5" : "pl-5"}`}
+      style={{ background: "rgba(14,14,22,0.92)" }}
+    >
+      {/* Colour swatch + abbreviation (home side: swatch left; away side: score left) */}
+      {!isRight && (
+        <span className="text-white font-mono text-3xl font-black w-9 text-center">
+          {score}
+        </span>
+      )}
+
+      <div className="flex items-center gap-2">
+        {/* Team colour bar */}
+        <div
+          className="w-1 rounded-full self-stretch"
+          style={{ backgroundColor: primaryColor, minHeight: 28 }}
+        />
+        <span
+          className="text-white font-bold text-sm tracking-widest uppercase"
+          style={{ letterSpacing: "0.12em" }}
+        >
+          {abbreviation}
+        </span>
+      </div>
+
+      {isRight && (
+        <span className="text-white font-mono text-3xl font-black w-9 text-center">
+          {score}
+        </span>
+      )}
+
+      {/* Possession dot / arrow */}
+      {hasPossession && (
+        <span
+          className="text-xs font-bold leading-none"
+          style={{ color: primaryColor }}
+          title="Ball possession"
+        >
+          {isRight ? "▶" : "◀"}
+        </span>
+      )}
+      {!hasPossession && <span className="w-3" />}
     </div>
   );
 }

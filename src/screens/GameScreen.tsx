@@ -5,7 +5,7 @@
  *   • BabylonCanvas (3D court renderer)
  *   • Simulation loop (via useSimLoop hook)
  *   • HUD overlays (scoreboard, controls, event feed)
- *   • Render bridge (syncs sim state → Babylon meshes)
+ *   • Render bridge (syncs sim state → Babylon meshes, owns broadcast camera)
  */
 
 import { useRef, useCallback } from "react";
@@ -29,10 +29,10 @@ export default function GameScreen() {
 
   const onSceneReady = useCallback(
     (scene: Scene) => {
-      // Build static court geometry
+      // Build static court geometry + arena lighting
       setupCourtScene(scene);
 
-      // Create render bridge
+      // Create render bridge (also creates broadcast camera inside init)
       const bridge = new RenderBridge(scene);
       bridgeRef.current = bridge;
 
@@ -43,7 +43,6 @@ export default function GameScreen() {
           bridge.init(simState, homeTeam, awayTeam);
           sceneReadyRef.current = true;
         } else {
-          // Sim state might not be ready on the very first frame; retry
           setTimeout(tryInit, 50);
         }
       };
@@ -55,13 +54,15 @@ export default function GameScreen() {
   const onRender = useCallback(
     (scene: Scene) => {
       const dtMs = scene.getEngine().getDeltaTime();
+      const dtSec = dtMs / 1000;
+
       // Advance simulation
       simLoop.onFrame(dtMs);
 
-      // Sync render bridge
+      // Sync render bridge — pass delta time for animation ticking
       const simState = simLoop.getState();
       if (simState && bridgeRef.current && sceneReadyRef.current) {
-        bridgeRef.current.sync(simState);
+        bridgeRef.current.sync(simState, dtSec);
       }
     },
     [simLoop]
