@@ -461,12 +461,14 @@ const HEAD_ARM_RAISE_MAX = 0.30; // units upward at full arm-raise (primitive pa
  * @param worldX      Sim x mapped to Babylon x
  * @param worldZ      Sim y mapped to Babylon z
  * @param facingAngle Rotation around Y axis in radians
+ * @param speed       Movement speed in ft/s — drives procedural animation frequency
  */
 export function updatePlayerVisual(
   entity: PlayerVisualEntity,
   worldX: number,
   worldZ: number,
-  facingAngle: number
+  facingAngle: number,
+  speed = 0
 ): void {
   entity.root.position.x = worldX;
   entity.root.position.z = worldZ;
@@ -480,8 +482,8 @@ export function updatePlayerVisual(
     entity.glbController.updateBlend(entity.animState.blendIn);
   } else {
     // Primitive path: apply procedural motion offsets
-    const bob      = getProceduralBob(entity.animState);
-    const lean     = getProceduralLean(entity.animState);
+    const bob      = getProceduralBob(entity.animState, speed);
+    const lean     = getProceduralLean(entity.animState, speed);
     const armRaise = getArmRaise(entity.animState);
 
     entity.root.position.y = bob;

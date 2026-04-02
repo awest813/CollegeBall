@@ -221,22 +221,58 @@ export function tickAnimationState(
 // ---------------------------------------------------------------------------
 
 /**
+ * Foot-strike frequency constants for procedural locomotion.
+ * Expressed as step-cycles per second at reference speeds.
+ * Clamped to min/max to avoid extreme values at very slow or very fast movement.
+ */
+const JOG_FREQ_MIN     = 2.0;  // Hz — slow-walk lower bound
+const JOG_FREQ_MAX     = 7.0;  // Hz — brisk jog upper bound
+const JOG_FREQ_DEFAULT = 5.0;  // Hz — fallback when speed is unavailable
+const JOG_FREQ_DIVISOR = 2.0;  // ft/s per Hz (tune with PLAYER_SPEED)
+
+const RUN_FREQ_MIN     = 3.0;
+const RUN_FREQ_MAX     = 9.0;
+const RUN_FREQ_DEFAULT = 8.0;
+const RUN_FREQ_DIVISOR = 3.0;
+
+/** Compute a step-cycle frequency that scales linearly with movement speed. */
+function locomotionFreq(
+  speed: number | undefined,
+  divisor: number,
+  min: number,
+  max: number,
+  fallback: number
+): number {
+  if (speed == null) return fallback;
+  return Math.max(min, Math.min(speed / divisor, max));
+}
+
+/**
  * Vertical bob amount for the given animation state.
  * Used to offset the root transform each frame (primitive meshes only).
+ *
+ * @param state  Current animation state.
+ * @param speed  Player speed in ft/s — scales step-cycle frequency for
+ *               locomotion states so the bob matches actual movement rate.
  */
-export function getProceduralBob(state: AnimationState): number {
+export function getProceduralBob(state: AnimationState, speed?: number): number {
   const { name, elapsed } = state;
   switch (name) {
     case "idle":
       return Math.sin(elapsed * 1.2) * 0.04;
     case "dribble_idle":
       return Math.sin(elapsed * 3.0) * 0.09;
-    case "jog":
-      return Math.abs(Math.sin(elapsed * 5.0)) * 0.14;
+    case "jog": {
+      // Foot-strike frequency scales with speed; clamp to a sensible range.
+      const freq = locomotionFreq(speed, JOG_FREQ_DIVISOR, JOG_FREQ_MIN, JOG_FREQ_MAX, JOG_FREQ_DEFAULT);
+      return Math.abs(Math.sin(elapsed * freq)) * 0.14;
+    }
     case "shuffle":
       return Math.abs(Math.sin(elapsed * 4.5)) * 0.10;
-    case "run":
-      return Math.abs(Math.sin(elapsed * 8.0)) * 0.20;
+    case "run": {
+      const freq = locomotionFreq(speed, RUN_FREQ_DIVISOR, RUN_FREQ_MIN, RUN_FREQ_MAX, RUN_FREQ_DEFAULT);
+      return Math.abs(Math.sin(elapsed * freq)) * 0.20;
+    }
     case "defensive_stance":
       return Math.sin(elapsed * 1.8) * 0.03 - 0.12; // crouched
     case "shoot":
@@ -271,13 +307,20 @@ export function getArmRaise(state: AnimationState): number {
 /**
  * Returns a lateral lean in radians for locomotion states.
  * Gives a subtle side-to-side sway while moving (primitive meshes only).
+ *
+ * @param state  Current animation state.
+ * @param speed  Player speed in ft/s — scales sway frequency to match gait.
  */
-export function getProceduralLean(state: AnimationState): number {
+export function getProceduralLean(state: AnimationState, speed?: number): number {
   switch (state.name) {
-    case "jog":
-      return Math.sin(state.elapsed * 5.0) * 0.04;
-    case "run":
-      return Math.sin(state.elapsed * 8.0) * 0.07;
+    case "jog": {
+      const freq = locomotionFreq(speed, JOG_FREQ_DIVISOR, JOG_FREQ_MIN, JOG_FREQ_MAX, JOG_FREQ_DEFAULT);
+      return Math.sin(state.elapsed * freq) * 0.04;
+    }
+    case "run": {
+      const freq = locomotionFreq(speed, RUN_FREQ_DIVISOR, RUN_FREQ_MIN, RUN_FREQ_MAX, RUN_FREQ_DEFAULT);
+      return Math.sin(state.elapsed * freq) * 0.07;
+    }
     default:
       return 0;
   }
