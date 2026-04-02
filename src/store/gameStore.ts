@@ -22,6 +22,7 @@ import type {
   CameraMode,
   PlayerGameStats,
   MatchPhase,
+  SimEvent,
 } from "../game/types";
 import {
   defaultHomeTeam,
@@ -69,6 +70,8 @@ export interface GameStore {
   playerStats: Record<string, PlayerGameStats>;
   /** The current phase of the match (e.g. PRE_GAME, IN_PLAY, FULL_TIME). */
   phase: MatchPhase;
+  /** Raw sim events emitted on the latest tick. */
+  latestEvents: SimEvent[];
 
   // ---- Actions ----
   /** Initialise a new exhibition game with default data. */
@@ -118,6 +121,7 @@ export const useGameStore = create<GameStore>((set) => ({
       teamFouls: { home: 0, away: 0 },
       playerStats: {},
       phase: "PRE_GAME" as MatchPhase,
+      latestEvents: [],
       gameClock: {
         remaining: defaultGameSettings.halfLength,
         half: 1,
@@ -164,6 +168,7 @@ export const useGameStore = create<GameStore>((set) => ({
   teamFouls: { home: 0, away: 0 },
   playerStats: {},
   phase: "PRE_GAME" as MatchPhase,
+  latestEvents: [],
 
   // Actions
   startExhibition: () =>
@@ -175,6 +180,7 @@ export const useGameStore = create<GameStore>((set) => ({
       teamFouls: { home: 0, away: 0 },
       playerStats: {},
       phase: "PRE_GAME" as MatchPhase,
+      latestEvents: [],
       gameClock: {
         remaining: defaultGameSettings.halfLength,
         half: 1,
@@ -207,5 +213,6 @@ export const useGameStore = create<GameStore>((set) => ({
       teamFouls: state.teamFouls,
       playerStats: state.playerStats,
       phase: state.phase,
+      latestEvents: state.events,
     }),
 }));

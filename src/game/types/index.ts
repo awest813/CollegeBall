@@ -105,7 +105,8 @@ export interface Possession {
 /** Per-player state tracked each simulation tick. */
 export interface SimPlayer {
   id: string;
-  teamId: string;
+  /** Simulation-side team slot, normalized to home/away for deterministic logic. */
+  teamId: PossessionTeam;
   /** Jersey number from the roster — used for display purposes (e.g. sub messages). */
   jerseyNumber: number;
   position: CourtPosition;

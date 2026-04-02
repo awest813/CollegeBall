@@ -55,6 +55,15 @@ export default function GameControls() {
             </button>
 
             <button
+              onClick={() => void window.toggleCollegeBallFullscreen?.()}
+              disabled={!isPlayable || isFinished}
+              className="rounded-full border border-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:border-white/25 hover:bg-white/8 disabled:cursor-not-allowed disabled:opacity-35"
+              title="Toggle fullscreen"
+            >
+              Fullscreen
+            </button>
+
+            <button
               onClick={openPauseMenu}
               disabled={!isPlayable || isFinished}
               className="rounded-full bg-amber-300 px-4 py-2 text-sm font-black uppercase tracking-[0.18em] text-slate-950 transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-35"
@@ -93,7 +102,7 @@ export default function GameControls() {
                 Sim Pace
               </div>
               <div className="text-[11px] font-medium text-white/35">
-                Esc opens menu
+                Esc menu | F fullscreen
               </div>
             </div>
             <div className="flex flex-wrap gap-2">

@@ -1,0 +1,209 @@
+{
+  "screen": "game",
+  "simStatus": "running",
+  "phase": "IN_PLAY",
+  "coordinateSystem": {
+    "origin": "Court center at midcourt",
+    "xAxis": "Positive x moves toward the away basket/right side in the base court layout",
+    "yAxis": "Positive y moves toward the top sideline",
+    "units": "Feet"
+  },
+  "score": {
+    "home": 4,
+    "away": 2
+  },
+  "gameClock": {
+    "remainingSeconds": 1112.97,
+    "half": 1,
+    "running": true
+  },
+  "shotClock": {
+    "remainingSeconds": 17.63,
+    "running": true
+  },
+  "possession": {
+    "team": "home",
+    "teamLabel": "STB",
+    "ballHandlerId": "player_5"
+  },
+  "cameraMode": "broadcast",
+  "ball": {
+    "x": 26.52,
+    "y": -1.43,
+    "height": 3.5,
+    "shotInFlight": false
+  },
+  "players": [
+    {
+      "id": "player_1",
+      "team": "home",
+      "teamLabel": "STB",
+      "number": 1,
+      "hasBall": false,
+      "position": {
+        "x": 27.33,
+        "y": 2.46
+      },
+      "targetPosition": {
+        "x": 27.33,
+        "y": 2.46
+      },
+      "stamina": 87.84,
+      "fouls": 0
+    },
+    {
+      "id": "player_2",
+      "team": "home",
+      "teamLabel": "STB",
+      "number": 2,
+      "hasBall": false,
+      "position": {
+        "x": 21.13,
+        "y": -12.5
+      },
+      "targetPosition": {
+        "x": 21.13,
+        "y": -12.5
+      },
+      "stamina": 90.03,
+      "fouls": 0
+    },
+    {
+      "id": "player_3",
+      "team": "home",
+      "teamLabel": "STB",
+      "number": 3,
+      "hasBall": false,
+      "position": {
+        "x": 22.34,
+        "y": 14.01
+      },
+      "targetPosition": {
+        "x": 22.34,
+        "y": 14.01
+      },
+      "stamina": 89,
+      "fouls": 0
+    },
+    {
+      "id": "player_4",
+      "team": "home",
+      "teamLabel": "STB",
+      "number": 4,
+      "hasBall": false,
+      "position": {
+        "x": 34.43,
+        "y": -3.31
+      },
+      "targetPosition": {
+        "x": 34.43,
+        "y": -3.31
+      },
+      "stamina": 87.12,
+      "fouls": 0
+    },
+    {
+      "id": "player_5",
+      "team": "home",
+      "teamLabel": "STB",
+      "number": 5,
+      "hasBall": true,
+      "position": {
+        "x": 26.52,
+        "y": -1.43
+      },
+      "targetPosition": {
+        "x": 26.52,
+        "y": -1.43
+      },
+      "stamina": 86.16,
+      "fouls": 0
+    },
+    {
+      "id": "player_9",
+      "team": "away",
+      "teamLabel": "CTG",
+      "number": 1,
+      "hasBall": false,
+      "position": {
+        "x": 31.92,
+        "y": 1.61
+      },
+      "targetPosition": {
+        "x": 31.92,
+        "y": 1.61
+      },
+      "stamina": 88.82,
+      "fouls": 0
+    },
+    {
+      "id": "player_10",
+      "team": "away",
+      "teamLabel": "CTG",
+      "number": 2,
+      "hasBall": false,
+      "position": {
+        "x": 27.49,
+        "y": -9.24
+      },
+      "targetPosition": {
+        "x": 27.49,
+        "y": -9.24
+      },
+      "stamina": 90.2,
+      "fouls": 0
+    },
+    {
+      "id": "player_11",
+      "team": "away",
+      "teamLabel": "CTG",
+      "number": 3,
+      "hasBall": false,
+      "position": {
+        "x": 26.95,
+        "y": 9.31
+      },
+      "targetPosition": {
+        "x": 26.95,
+        "y": 9.31
+      },
+      "stamina": 87.91,
+      "fouls": 0
+    },
+    {
+      "id": "player_12",
+      "team": "away",
+      "teamLabel": "CTG",
+      "number": 4,
+      "hasBall": false,
+      "position": {
+        "x": 35.33,
+        "y": -0.56
+      },
+      "targetPosition": {
+        "x": 35.33,
+        "y": -0.56
+      },
+      "stamina": 88.63,
+      "fouls": 0
+    },
+    {
+      "id": "player_13",
+      "team": "away",
+      "teamLabel": "CTG",
+      "number": 5,
+      "hasBall": false,
+      "position": {
+        "x": 42.19,
+        "y": 6.2
+      },
+      "targetPosition": {
+        "x": 42.19,
+        "y": 6.2
+      },
+      "stamina": 86.22,
+      "fouls": 0
+    }
+  ],
+  "recentEvents": []
+}

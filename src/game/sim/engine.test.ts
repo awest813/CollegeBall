@@ -107,4 +107,29 @@ describe("tick — match flow", () => {
     expect(state.gameClock.half).toBe(2);
     expect(state.events.some((e) => e.type === "game_end")).toBe(true);
   });
+
+  it("keeps simulation team sides stable even when raw team ids are custom", () => {
+    const h = ["h1", "h2", "h3", "h4", "h5"];
+    const a = ["a1", "a2", "a3", "a4", "a5"];
+    const home = makeTeam("duke-blue", "Home", h);
+    const away = makeTeam("carolina-white", "Away", a);
+
+    let state = createInitialSimState(home, away, tinySettings);
+    expect(new Set(state.players.map((p) => p.teamId))).toEqual(
+      new Set(["home", "away"])
+    );
+
+    const dt = 1 / 60;
+    for (let i = 0; i < 2_000; i++) {
+      state = tick(state, dt, tinySettings);
+      if (state.phase === "IN_PLAY") {
+        break;
+      }
+    }
+
+    expect(state.phase).toBe("IN_PLAY");
+    expect(state.players.filter((p) => p.teamId === "home")).toHaveLength(5);
+    expect(state.players.filter((p) => p.teamId === "away")).toHaveLength(5);
+    expect(state.possession.team === "home" || state.possession.team === "away").toBe(true);
+  });
 });

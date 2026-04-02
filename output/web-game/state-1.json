@@ -1,0 +1,209 @@
+{
+  "screen": "game",
+  "simStatus": "running",
+  "phase": "IN_PLAY",
+  "coordinateSystem": {
+    "origin": "Court center at midcourt",
+    "xAxis": "Positive x moves toward the away basket/right side in the base court layout",
+    "yAxis": "Positive y moves toward the top sideline",
+    "units": "Feet"
+  },
+  "score": {
+    "home": 2,
+    "away": 2
+  },
+  "gameClock": {
+    "remainingSeconds": 1172.97,
+    "half": 1,
+    "running": true
+  },
+  "shotClock": {
+    "remainingSeconds": 12.4,
+    "running": true
+  },
+  "possession": {
+    "team": "home",
+    "teamLabel": "STB",
+    "ballHandlerId": "player_3"
+  },
+  "cameraMode": "broadcast",
+  "ball": {
+    "x": 27.59,
+    "y": 1.69,
+    "height": 3.5,
+    "shotInFlight": false
+  },
+  "players": [
+    {
+      "id": "player_1",
+      "team": "home",
+      "teamLabel": "STB",
+      "number": 1,
+      "hasBall": false,
+      "position": {
+        "x": 21.67,
+        "y": 1.54
+      },
+      "targetPosition": {
+        "x": 21.67,
+        "y": 1.54
+      },
+      "stamina": 95.15,
+      "fouls": 0
+    },
+    {
+      "id": "player_2",
+      "team": "home",
+      "teamLabel": "STB",
+      "number": 2,
+      "hasBall": false,
+      "position": {
+        "x": 16.67,
+        "y": -11.38
+      },
+      "targetPosition": {
+        "x": 16.67,
+        "y": -11.38
+      },
+      "stamina": 95.71,
+      "fouls": 0
+    },
+    {
+      "id": "player_3",
+      "team": "home",
+      "teamLabel": "STB",
+      "number": 3,
+      "hasBall": true,
+      "position": {
+        "x": 27.59,
+        "y": 1.69
+      },
+      "targetPosition": {
+        "x": 27.59,
+        "y": 1.69
+      },
+      "stamina": 95.45,
+      "fouls": 0
+    },
+    {
+      "id": "player_4",
+      "team": "home",
+      "teamLabel": "STB",
+      "number": 4,
+      "hasBall": false,
+      "position": {
+        "x": 33.3,
+        "y": -7.19
+      },
+      "targetPosition": {
+        "x": 33.3,
+        "y": -7.19
+      },
+      "stamina": 94.68,
+      "fouls": 0
+    },
+    {
+      "id": "player_5",
+      "team": "home",
+      "teamLabel": "STB",
+      "number": 5,
+      "hasBall": false,
+      "position": {
+        "x": 40.59,
+        "y": 4.28
+      },
+      "targetPosition": {
+        "x": 40.59,
+        "y": 4.28
+      },
+      "stamina": 94.51,
+      "fouls": 0
+    },
+    {
+      "id": "player_9",
+      "team": "away",
+      "teamLabel": "CTG",
+      "number": 1,
+      "hasBall": false,
+      "position": {
+        "x": 27.15,
+        "y": 1
+      },
+      "targetPosition": {
+        "x": 27.15,
+        "y": 1
+      },
+      "stamina": 95.65,
+      "fouls": 0
+    },
+    {
+      "id": "player_10",
+      "team": "away",
+      "teamLabel": "CTG",
+      "number": 2,
+      "hasBall": false,
+      "position": {
+        "x": 29.61,
+        "y": -2.01
+      },
+      "targetPosition": {
+        "x": 29.61,
+        "y": -2.01
+      },
+      "stamina": 95.98,
+      "fouls": 0
+    },
+    {
+      "id": "player_11",
+      "team": "away",
+      "teamLabel": "CTG",
+      "number": 3,
+      "hasBall": false,
+      "position": {
+        "x": 20.43,
+        "y": 14.01
+      },
+      "targetPosition": {
+        "x": 20.43,
+        "y": 14.01
+      },
+      "stamina": 95.18,
+      "fouls": 0
+    },
+    {
+      "id": "player_12",
+      "team": "away",
+      "teamLabel": "CTG",
+      "number": 4,
+      "hasBall": false,
+      "position": {
+        "x": 41.71,
+        "y": -0.56
+      },
+      "targetPosition": {
+        "x": 41.71,
+        "y": -0.56
+      },
+      "stamina": 95.63,
+      "fouls": 0
+    },
+    {
+      "id": "player_13",
+      "team": "away",
+      "teamLabel": "CTG",
+      "number": 5,
+      "hasBall": false,
+      "position": {
+        "x": 41.13,
+        "y": 3.84
+      },
+      "targetPosition": {
+        "x": 41.13,
+        "y": 3.84
+      },
+      "stamina": 94.86,
+      "fouls": 0
+    }
+  ],
+  "recentEvents": []
+}

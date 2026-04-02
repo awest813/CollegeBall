@@ -91,7 +91,7 @@ export default function GameMenuOverlay() {
               <div className="mt-3 grid gap-3 sm:grid-cols-3">
                 <StatusTile label="Camera" value={cameraMode} />
                 <StatusTile label="Speed" value={`${gameSpeed}x`} />
-                <StatusTile label="Shortcut" value="Esc closes menu" />
+                <StatusTile label="Shortcut" value="Esc menu | F fullscreen" />
               </div>
             </div>
           </div>

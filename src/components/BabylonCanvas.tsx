@@ -54,7 +54,9 @@ export default function BabylonCanvas({
     // --- Render loop ---
     engine.runRenderLoop(() => {
       onRenderRef.current?.(scene);
-      scene.render();
+      if (scene.activeCamera) {
+        scene.render();
+      }
     });
 
     // --- Resize handler ---

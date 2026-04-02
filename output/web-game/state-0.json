@@ -1,0 +1,209 @@
+{
+  "screen": "game",
+  "simStatus": "running",
+  "phase": "IN_PLAY",
+  "coordinateSystem": {
+    "origin": "Court center at midcourt",
+    "xAxis": "Positive x moves toward the away basket/right side in the base court layout",
+    "yAxis": "Positive y moves toward the top sideline",
+    "units": "Feet"
+  },
+  "score": {
+    "home": 2,
+    "away": 2
+  },
+  "gameClock": {
+    "remainingSeconds": 1187.97,
+    "half": 1,
+    "running": true
+  },
+  "shotClock": {
+    "remainingSeconds": 27.4,
+    "running": true
+  },
+  "possession": {
+    "team": "home",
+    "teamLabel": "STB",
+    "ballHandlerId": "player_1"
+  },
+  "cameraMode": "broadcast",
+  "ball": {
+    "x": 33.9,
+    "y": 0.69,
+    "height": 3.5,
+    "shotInFlight": false
+  },
+  "players": [
+    {
+      "id": "player_1",
+      "team": "home",
+      "teamLabel": "STB",
+      "number": 1,
+      "hasBall": true,
+      "position": {
+        "x": 33.9,
+        "y": 0.69
+      },
+      "targetPosition": {
+        "x": 35,
+        "y": -2.03
+      },
+      "stamina": 96.3,
+      "fouls": 0
+    },
+    {
+      "id": "player_2",
+      "team": "home",
+      "teamLabel": "STB",
+      "number": 2,
+      "hasBall": false,
+      "position": {
+        "x": 22.35,
+        "y": -10.71
+      },
+      "targetPosition": {
+        "x": 23.85,
+        "y": -10.12
+      },
+      "stamina": 96.9,
+      "fouls": 0
+    },
+    {
+      "id": "player_3",
+      "team": "home",
+      "teamLabel": "STB",
+      "number": 3,
+      "hasBall": false,
+      "position": {
+        "x": 20.58,
+        "y": 12.8
+      },
+      "targetPosition": {
+        "x": 21.65,
+        "y": 11.02
+      },
+      "stamina": 96.94,
+      "fouls": 0
+    },
+    {
+      "id": "player_4",
+      "team": "home",
+      "teamLabel": "STB",
+      "number": 4,
+      "hasBall": false,
+      "position": {
+        "x": 19.23,
+        "y": -5.19
+      },
+      "targetPosition": {
+        "x": 38.83,
+        "y": -4.54
+      },
+      "stamina": 95.89,
+      "fouls": 0
+    },
+    {
+      "id": "player_5",
+      "team": "home",
+      "teamLabel": "STB",
+      "number": 5,
+      "hasBall": false,
+      "position": {
+        "x": 13.03,
+        "y": 1.94
+      },
+      "targetPosition": {
+        "x": 41.39,
+        "y": 7.08
+      },
+      "stamina": 95.8,
+      "fouls": 0
+    },
+    {
+      "id": "player_9",
+      "team": "away",
+      "teamLabel": "CTG",
+      "number": 1,
+      "hasBall": false,
+      "position": {
+        "x": -19.88,
+        "y": 1.39
+      },
+      "targetPosition": {
+        "x": 34.45,
+        "y": 3.12
+      },
+      "stamina": 97.43,
+      "fouls": 0
+    },
+    {
+      "id": "player_10",
+      "team": "away",
+      "teamLabel": "CTG",
+      "number": 2,
+      "hasBall": false,
+      "position": {
+        "x": -14.84,
+        "y": -11.81
+      },
+      "targetPosition": {
+        "x": 23.22,
+        "y": -9.91
+      },
+      "stamina": 97.45,
+      "fouls": 0
+    },
+    {
+      "id": "player_11",
+      "team": "away",
+      "teamLabel": "CTG",
+      "number": 3,
+      "hasBall": false,
+      "position": {
+        "x": -17.35,
+        "y": 7.61
+      },
+      "targetPosition": {
+        "x": 23.48,
+        "y": 12.85
+      },
+      "stamina": 97.19,
+      "fouls": 0
+    },
+    {
+      "id": "player_12",
+      "team": "away",
+      "teamLabel": "CTG",
+      "number": 4,
+      "hasBall": false,
+      "position": {
+        "x": -33.28,
+        "y": -2.09
+      },
+      "targetPosition": {
+        "x": 21.01,
+        "y": -5.12
+      },
+      "stamina": 97.34,
+      "fouls": 0
+    },
+    {
+      "id": "player_13",
+      "team": "away",
+      "teamLabel": "CTG",
+      "number": 5,
+      "hasBall": false,
+      "position": {
+        "x": -32.76,
+        "y": -0.08
+      },
+      "targetPosition": {
+        "x": 13.83,
+        "y": 2.26
+      },
+      "stamina": 96.77,
+      "fouls": 0
+    }
+  ],
+  "recentEvents": []
+}

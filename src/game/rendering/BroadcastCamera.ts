@@ -104,6 +104,7 @@ export class BroadcastCamera {
       new Vector3(0, 2, 0),
       scene
     );
+    scene.activeCamera = this.camera;
 
     // Allow dev/inspection overrides with soft limits
     this.camera.lowerRadiusLimit = 40;

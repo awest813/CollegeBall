@@ -105,6 +105,7 @@ export default function MainMenu() {
 
                 <div className="mt-8 flex flex-wrap gap-3">
                   <button
+                    id="start-btn"
                     onClick={startExhibition}
                     className="rounded-full bg-amber-300 px-8 py-3.5 text-sm font-black uppercase tracking-[0.2em] text-slate-950 transition hover:bg-amber-200"
                   >
@@ -182,7 +183,7 @@ export default function MainMenu() {
             <div className="grid gap-3 sm:grid-cols-3">
               <StatPanel label="Home overall" value={homeProfile.overall} />
               <StatPanel label="Away overall" value={awayProfile.overall} />
-              <StatPanel label="Control note" value="Esc = Game Menu" />
+              <StatPanel label="Control note" value="Esc menu | F full" />
             </div>
           </section>
         </main>

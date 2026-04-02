@@ -22,6 +22,8 @@ export interface SimLoopController {
   onFrame: (dtMs: number) => void;
   /** Get the latest sim state (for the render bridge). */
   getState: () => SimulationState | null;
+  /** Advance the sim deterministically without waiting for real time. */
+  advanceByMs: (dtMs: number) => void;
 }
 
 // Fixed timestep for deterministic simulation (60 Hz)
@@ -30,6 +32,7 @@ const FIXED_DT = 1 / 60;
 export function useSimLoop(): SimLoopController {
   const stateRef = useRef<SimulationState | null>(null);
   const accumulatorRef = useRef(0);
+  const manualControlRef = useRef(false);
 
   const simStatus = useGameStore((s) => s.simStatus);
   const gameSpeed = useGameStore((s) => s.gameSpeed);
@@ -38,37 +41,77 @@ export function useSimLoop(): SimLoopController {
   const settings = useGameStore((s) => s.settings);
   const applySimState = useGameStore((s) => s.applySimState);
 
+  const initializeState = useCallback(() => {
+    resetSimEngine();
+    accumulatorRef.current = 0;
+    stateRef.current = createInitialSimState(homeTeam, awayTeam, settings);
+    applySimState(stateRef.current);
+  }, [homeTeam, awayTeam, settings, applySimState]);
+
   // Initialise (or re-initialise) sim state when a game starts or restarts.
   // A restart is detected when simStatus becomes "running" while the previous
   // game's clock has already stopped (Play Again after a finished game).
   useEffect(() => {
     if (simStatus === "running") {
+      manualControlRef.current = false;
       const needsInit =
         stateRef.current === null || stateRef.current.phase === "FINISHED";
       if (needsInit) {
-        resetSimEngine();
-        accumulatorRef.current = 0;
-        stateRef.current = createInitialSimState(homeTeam, awayTeam, settings);
-        applySimState(stateRef.current);
+        initializeState();
       }
     }
     if (simStatus === "idle") {
       stateRef.current = null;
+      accumulatorRef.current = 0;
+      manualControlRef.current = false;
     }
-  }, [simStatus, homeTeam, awayTeam, settings, applySimState]);
+  }, [simStatus, initializeState]);
+
+  const advanceByMs = useCallback(
+    (dtMs: number) => {
+      if ((simStatus !== "running" && simStatus !== "paused") || dtMs <= 0) {
+        return;
+      }
+
+      if (stateRef.current === null || stateRef.current.phase === "FINISHED") {
+        initializeState();
+      }
+      if (!stateRef.current) {
+        return;
+      }
+
+      manualControlRef.current = true;
+      accumulatorRef.current += (dtMs / 1000) * gameSpeed;
+
+      let ticked = false;
+      while (accumulatorRef.current >= FIXED_DT) {
+        stateRef.current = tick(stateRef.current, FIXED_DT, settings);
+        accumulatorRef.current -= FIXED_DT;
+        ticked = true;
+
+        if (stateRef.current.phase === "FINISHED") {
+          useGameStore.getState().setSimStatus("finished");
+          break;
+        }
+      }
+
+      if (ticked && stateRef.current) {
+        applySimState(stateRef.current);
+      }
+    },
+    [simStatus, gameSpeed, settings, applySimState, initializeState]
+  );
 
   const onFrame = useCallback(
     (dtMs: number) => {
       if (simStatus !== "running" || !stateRef.current) return;
+      if (manualControlRef.current) return;
 
       // `useEffect` can run after the first post-"Play Again" render frame. If we still
       // hold the previous game's finished snapshot, re-init here so the sim never ticks
       // a stale FINAL state before the fresh match snapshot is installed.
       if (stateRef.current.phase === "FINISHED") {
-        resetSimEngine();
-        accumulatorRef.current = 0;
-        stateRef.current = createInitialSimState(homeTeam, awayTeam, settings);
-        applySimState(stateRef.current);
+        initializeState();
       }
 
       const dtScaled = (dtMs / 1000) * gameSpeed;
@@ -92,10 +135,10 @@ export function useSimLoop(): SimLoopController {
         applySimState(stateRef.current);
       }
     },
-    [simStatus, gameSpeed, homeTeam, awayTeam, settings, applySimState]
+    [simStatus, gameSpeed, settings, applySimState, initializeState]
   );
 
   const getState = useCallback(() => stateRef.current, []);
 
-  return { onFrame, getState };
+  return { onFrame, getState, advanceByMs };
 }

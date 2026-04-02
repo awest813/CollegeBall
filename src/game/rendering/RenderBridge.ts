@@ -53,6 +53,13 @@ const OVERRIDE_DURATIONS: Partial<Record<AnimationStateName, number>> = {
   celebrate: 1.50,
 };
 
+/**
+ * The shipped prototype currently relies on primitive player silhouettes.
+ * Keep GLB upgrades disabled until a production asset is published under
+ * `public/assets/models/players/` so gameplay tests stay free of 404 noise.
+ */
+const ENABLE_PLAYER_MODEL_UPGRADES = false;
+
 export class RenderBridge {
   private scene: Scene;
   private playerVisuals:  Map<string, PlayerVisualEntity> = new Map();
@@ -62,10 +69,6 @@ export class RenderBridge {
   private ballMesh:       Mesh | null = null;
   private broadcastCamera: BroadcastCamera | null = null;
   private initialized = false;
-
-  /** Team IDs stored at init so event-driven celebrate can match players. */
-  private homeTeamId = "";
-  private awayTeamId = "";
 
   /**
    * Per-player animation overrides injected by sim events.
@@ -86,14 +89,11 @@ export class RenderBridge {
     this.dispose();
     clearPlayerMaterialCache();
 
-    this.homeTeamId = homeTeam.id;
-    this.awayTeamId = awayTeam.id;
-
     const allPlayers = [...homeTeam.roster, ...awayTeam.roster];
 
     for (const sp of state.players) {
-      const team       = sp.teamId === homeTeam.id ? homeTeam : awayTeam;
-      const isHome     = sp.teamId === homeTeam.id;
+      const team       = sp.teamId === "home" ? homeTeam : awayTeam;
+      const isHome     = sp.teamId === "home";
       const playerData = allPlayers.find((p) => p.id === sp.id);
       const number     = playerData?.number ?? 0;
 
@@ -106,7 +106,9 @@ export class RenderBridge {
 
       // Fire-and-forget: attempt to upgrade the primitive to a GLB model.
       // The entity will continue working with primitives if the file is absent.
-      void loadGlbForPlayer(this.scene, visual);
+      if (ENABLE_PLAYER_MODEL_UPGRADES) {
+        void loadGlbForPlayer(this.scene, visual);
+      }
     }
 
     this.ballMesh = createBallMesh(this.scene);
@@ -153,10 +155,8 @@ export class RenderBridge {
 
         case "shot_made": {
           // ev.teamId is "home" | "away" (PossessionTeam) — map to actual ID
-          const scoringTeamId =
-            ev.teamId === "home" ? this.homeTeamId : this.awayTeamId;
           for (const sp of state.players) {
-            if (sp.teamId === scoringTeamId) {
+            if (sp.teamId === ev.teamId) {
               this.animOverrides.set(sp.id, {
                 name:          "celebrate",
                 remainingTime: OVERRIDE_DURATIONS.celebrate ?? 1.50,
@@ -277,9 +277,6 @@ export class RenderBridge {
     this.facingAngles.clear();
     this.prevPositions.clear();
     this.animOverrides.clear();
-
-    this.homeTeamId = "";
-    this.awayTeamId = "";
 
     this.ballMesh?.dispose();
     this.ballMesh = null;

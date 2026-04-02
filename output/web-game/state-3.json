@@ -1,0 +1,209 @@
+{
+  "screen": "game",
+  "simStatus": "running",
+  "phase": "IN_PLAY",
+  "coordinateSystem": {
+    "origin": "Court center at midcourt",
+    "xAxis": "Positive x moves toward the away basket/right side in the base court layout",
+    "yAxis": "Positive y moves toward the top sideline",
+    "units": "Feet"
+  },
+  "score": {
+    "home": 4,
+    "away": 2
+  },
+  "gameClock": {
+    "remainingSeconds": 1142.97,
+    "half": 1,
+    "running": true
+  },
+  "shotClock": {
+    "remainingSeconds": 26.18,
+    "running": true
+  },
+  "possession": {
+    "team": "away",
+    "teamLabel": "CTG",
+    "ballHandlerId": "player_9"
+  },
+  "cameraMode": "broadcast",
+  "ball": {
+    "x": -31.83,
+    "y": 1.89,
+    "height": 3.5,
+    "shotInFlight": false
+  },
+  "players": [
+    {
+      "id": "player_1",
+      "team": "home",
+      "teamLabel": "STB",
+      "number": 1,
+      "hasBall": false,
+      "position": {
+        "x": -3.13,
+        "y": -2.06
+      },
+      "targetPosition": {
+        "x": -17.55,
+        "y": -1.9
+      },
+      "stamina": 91.24,
+      "fouls": 0
+    },
+    {
+      "id": "player_2",
+      "team": "home",
+      "teamLabel": "STB",
+      "number": 2,
+      "hasBall": false,
+      "position": {
+        "x": -7.95,
+        "y": -10.37
+      },
+      "targetPosition": {
+        "x": -25.84,
+        "y": -10.61
+      },
+      "stamina": 92.67,
+      "fouls": 0
+    },
+    {
+      "id": "player_3",
+      "team": "home",
+      "teamLabel": "STB",
+      "number": 3,
+      "hasBall": false,
+      "position": {
+        "x": -5.83,
+        "y": 8.57
+      },
+      "targetPosition": {
+        "x": -21.37,
+        "y": 8.64
+      },
+      "stamina": 91.96,
+      "fouls": 0
+    },
+    {
+      "id": "player_4",
+      "team": "home",
+      "teamLabel": "STB",
+      "number": 4,
+      "hasBall": false,
+      "position": {
+        "x": 4.07,
+        "y": -3.63
+      },
+      "targetPosition": {
+        "x": -22.55,
+        "y": -4.36
+      },
+      "stamina": 90.69,
+      "fouls": 0
+    },
+    {
+      "id": "player_5",
+      "team": "home",
+      "teamLabel": "STB",
+      "number": 5,
+      "hasBall": false,
+      "position": {
+        "x": 9.31,
+        "y": 1.43
+      },
+      "targetPosition": {
+        "x": -18.26,
+        "y": 2.1
+      },
+      "stamina": 90.21,
+      "fouls": 0
+    },
+    {
+      "id": "player_9",
+      "team": "away",
+      "teamLabel": "CTG",
+      "number": 1,
+      "hasBall": true,
+      "position": {
+        "x": -31.83,
+        "y": 1.89
+      },
+      "targetPosition": {
+        "x": -31.83,
+        "y": 1.89
+      },
+      "stamina": 91.66,
+      "fouls": 0
+    },
+    {
+      "id": "player_10",
+      "team": "away",
+      "teamLabel": "CTG",
+      "number": 2,
+      "hasBall": false,
+      "position": {
+        "x": -19.93,
+        "y": -12.78
+      },
+      "targetPosition": {
+        "x": -19.93,
+        "y": -12.78
+      },
+      "stamina": 92.74,
+      "fouls": 0
+    },
+    {
+      "id": "player_11",
+      "team": "away",
+      "teamLabel": "CTG",
+      "number": 3,
+      "hasBall": false,
+      "position": {
+        "x": -22.44,
+        "y": 12.48
+      },
+      "targetPosition": {
+        "x": -22.44,
+        "y": 12.48
+      },
+      "stamina": 91.05,
+      "fouls": 0
+    },
+    {
+      "id": "player_12",
+      "team": "away",
+      "teamLabel": "CTG",
+      "number": 4,
+      "hasBall": false,
+      "position": {
+        "x": -38.99,
+        "y": -7.39
+      },
+      "targetPosition": {
+        "x": -38.99,
+        "y": -7.39
+      },
+      "stamina": 91.48,
+      "fouls": 0
+    },
+    {
+      "id": "player_13",
+      "team": "away",
+      "teamLabel": "CTG",
+      "number": 5,
+      "hasBall": false,
+      "position": {
+        "x": -42.11,
+        "y": 3.2
+      },
+      "targetPosition": {
+        "x": -42.85,
+        "y": 3.19
+      },
+      "stamina": 89.69,
+      "fouls": 0
+    }
+  ],
+  "recentEvents": []
+}

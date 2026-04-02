@@ -103,7 +103,7 @@ export function createInitialSimState(
     const ratings = ratingsMap.get(id) ?? defaultRatings;
     players.push({
       id,
-      teamId: homeTeam.id,
+      teamId: "home",
       jerseyNumber: jerseyMap.get(id) ?? 0,
       position: { ...pos },
       targetPosition: { ...pos },
@@ -122,7 +122,7 @@ export function createInitialSimState(
       const ratings = ratingsMap.get(p.id) ?? defaultRatings;
       bench.push({
         id: p.id,
-        teamId: homeTeam.id,
+        teamId: "home",
         jerseyNumber: p.number,
         position: { x: -47, y: 0 },
         targetPosition: { x: -47, y: 0 },
@@ -140,7 +140,7 @@ export function createInitialSimState(
     const ratings = ratingsMap.get(id) ?? defaultRatings;
     players.push({
       id,
-      teamId: awayTeam.id,
+      teamId: "away",
       jerseyNumber: jerseyMap.get(id) ?? 0,
       position: { ...pos },
       targetPosition: { ...pos },
@@ -159,7 +159,7 @@ export function createInitialSimState(
       const ratings = ratingsMap.get(p.id) ?? defaultRatings;
       bench.push({
         id: p.id,
-        teamId: awayTeam.id,
+        teamId: "away",
         jerseyNumber: p.number,
         position: { x: 47, y: 0 },
         targetPosition: { x: 47, y: 0 },
@@ -310,7 +310,7 @@ function moveToward(
  * Find the most open teammate (furthest from the nearest defender).
  * Falls back to a random pick if everyone is equally covered.
  */
-function findOpenTeammate(players: SimPlayer[], selfId: string, teamId: string): SimPlayer | null {
+function findOpenTeammate(players: SimPlayer[], selfId: string, teamId: PossessionTeam): SimPlayer | null {
   const teammates = players.filter((p) => p.teamId === teamId && p.id !== selfId);
   if (teammates.length === 0) return null;
 
@@ -672,7 +672,7 @@ function resolveNonShootingFoul(
   const { state, settings } = ctx;
 
   fouler.fouls += 1;
-  const foulerTeam = fouler.teamId as PossessionTeam;
+  const foulerTeam = fouler.teamId;
   state.teamFouls[foulerTeam] += 1;
   if (state.playerStats[fouler.id]) {
     state.playerStats[fouler.id].fouls += 1;
@@ -695,7 +695,7 @@ function resolveNonShootingFoul(
       teamId: foulerTeam,
       message: "Double bonus — 2 free throws!",
     });
-    resolveFreeThrows(ctx, fouled, 2, fouled.teamId as PossessionTeam);
+    resolveFreeThrows(ctx, fouled, 2, fouled.teamId);
     changePossession(ctx);
   } else if (teamFoulsForFouler >= settings.bonusFoulThreshold) {
     // One-and-one: make the first to earn the second
@@ -704,7 +704,7 @@ function resolveNonShootingFoul(
       teamId: foulerTeam,
       message: "Bonus — one-and-one!",
     });
-    resolveOneAndOne(ctx, fouled, fouled.teamId as PossessionTeam);
+    resolveOneAndOne(ctx, fouled, fouled.teamId);
     changePossession(ctx);
   } else {
     // No FTs — just reset the shot clock and keep possession
@@ -948,7 +948,7 @@ function resolveShotInFlight(ctx: TickContext): void {
     if (isFouled && fouler && shooter) {
       // Commit the foul
       fouler.fouls += 1;
-      const foulerTeam = fouler.teamId as PossessionTeam;
+      const foulerTeam = fouler.teamId;
       state.teamFouls[foulerTeam] += 1;
       if (state.playerStats[fouler.id]) {
         state.playerStats[fouler.id].fouls += 1;
@@ -1082,12 +1082,12 @@ function resolveRebound(ctx: TickContext, basketPos: CourtPosition): void {
     });
   } else {
     // Defensive rebound: possession changes
-    state.possession.team = rebounder.teamId as PossessionTeam;
+    state.possession.team = rebounder.teamId;
     state.possession.ballHandlerId = rebounder.id;
     state.shotClock.remaining = settings.shotClockLength;
     state._timeSinceLastAction = 0;
     state._timeSinceLastTargetAssign = 0;
-    assignTargets(state.players, rebounder.teamId as PossessionTeam, rebounder.id);
+    assignTargets(state.players, rebounder.teamId, rebounder.id);
     ctx.events.push({
       type: "rebound",
       playerId: rebounder.id,
@@ -1130,12 +1130,12 @@ function executePass(ctx: TickContext, from: SimPlayer, to: SimPlayer): void {
       if (Math.random() < stealChance) {
         from.hasBall = false;
         nearestDef.player.hasBall = true;
-        state.possession.team = nearestDef.player.teamId as PossessionTeam;
+        state.possession.team = nearestDef.player.teamId;
         state.possession.ballHandlerId = nearestDef.player.id;
         state.shotClock.remaining = ctx.settings.shotClockLength;
         state._timeSinceLastAction = 0;
         state._timeSinceLastTargetAssign = 0;
-        assignTargets(state.players, nearestDef.player.teamId as PossessionTeam, nearestDef.player.id);
+        assignTargets(state.players, nearestDef.player.teamId, nearestDef.player.id);
 
         if (state.playerStats[nearestDef.player.id]) {
           state.playerStats[nearestDef.player.id].steals += 1;
