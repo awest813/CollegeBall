@@ -394,10 +394,24 @@ export function createPlayerVisual(
 // ---------------------------------------------------------------------------
 
 /**
- * Attempt to load `player_base.glb` and attach it to an existing entity.
+ * Attempt to load the HVGirl character model from the Babylon.js asset library
+ * and attach it to an existing entity.
+ *
+ * Asset: https://assets.babylonjs.com/meshes/HVGirl.glb
+ * Animations bundled in HVGirl.glb: Idle, Walk, Run, Dance
+ *   • Idle  → AnimationStateName "idle"
+ *   • Walk  → AnimationStateName "jog"
+ *   • Run   → AnimationStateName "run"
+ *   • Dance → AnimationStateName "celebrate"
+ *
+ * HVGirl is modelled in metres; the CollegeBall court uses feet as the
+ * Babylon unit (94 ft × 50 ft court).  A scale of 3.5 makes her approximately
+ * 6 ft tall in the scene — close to an NCAA player's height.  Adjust the
+ * constant below if the model source changes.
  *
  * On success:
  *   • The imported mesh hierarchy is parented to entity.root.
+ *   • entity.root.scaling is set to GLB_PLAYER_SCALE to convert metres→feet.
  *   • Primitive fallback meshes are hidden (not disposed — they serve as a
  *     safety net if the GLB is later found to be unusable).
  *   • entity.glbController is created to manage animation groups.
@@ -408,6 +422,10 @@ export function createPlayerVisual(
  * Fire-and-forget usage:
  *   loadGlbForPlayer(scene, entity); // no await needed
  */
+
+/** Scale applied to entity.root when HVGirl is loaded (metres → court feet). */
+const GLB_PLAYER_SCALE = 3.5;
+
 export async function loadGlbForPlayer(
   scene: Scene,
   entity: PlayerVisualEntity
@@ -415,12 +433,16 @@ export async function loadGlbForPlayer(
   try {
     const result = await SceneLoader.ImportMeshAsync(
       "",
-      "/assets/models/players/",
-      "player_base.glb",
+      "https://assets.babylonjs.com/meshes/",
+      "HVGirl.glb",
       scene
     );
 
     if (!result.meshes.length) return;
+
+    // Scale entity.root so the metre-scale character fits the foot-unit court.
+    // This must be done before parenting so the GLB children inherit the scale.
+    entity.root.scaling = new Vector3(GLB_PLAYER_SCALE, GLB_PLAYER_SCALE, GLB_PLAYER_SCALE);
 
     // Parent all root-level meshes from the GLB to entity.root
     for (const mesh of result.meshes) {

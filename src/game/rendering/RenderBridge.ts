@@ -24,7 +24,7 @@
  *   • BroadcastCamera (tracks ball each frame)
  */
 
-import { Scene, Mesh, Vector3, MeshBuilder, StandardMaterial, Color3 } from "@babylonjs/core";
+import { Scene, Mesh, AbstractMesh, Vector3, MeshBuilder, StandardMaterial, Color3, SceneLoader } from "@babylonjs/core";
 import type { SimulationState, Team, CameraMode, AnimationStateName } from "../types";
 import {
   createPlayerVisual,
@@ -71,7 +71,7 @@ const OVERRIDE_DURATIONS: Partial<Record<AnimationStateName, number>> = {
  * Keep GLB upgrades disabled until a production asset is published under
  * `public/assets/models/players/` so gameplay tests stay free of 404 noise.
  */
-const ENABLE_PLAYER_MODEL_UPGRADES = false;
+const ENABLE_PLAYER_MODEL_UPGRADES = true;
 
 export class RenderBridge {
   private scene: Scene;
@@ -81,6 +81,7 @@ export class RenderBridge {
   private prevPositions:    Map<string, { x: number; z: number }> = new Map();
   private smoothedPositions: Map<string, { x: number; z: number }> = new Map();
   private ballMesh:         Mesh | null = null;
+  private ballGlbRoot:      AbstractMesh | null = null;
   private broadcastCamera: BroadcastCamera | null = null;
   private initialized = false;
 
@@ -127,6 +128,9 @@ export class RenderBridge {
     }
 
     this.ballMesh = createBallMesh(this.scene);
+
+    // Fire-and-forget: attempt to upgrade the sphere to the Babylon.js ball GLB.
+    void this.loadBallGlbAsync();
 
     // Create broadcast camera (owns the camera for this scene)
     this.broadcastCamera = new BroadcastCamera(this.scene);
@@ -276,6 +280,11 @@ export class RenderBridge {
         state.ballPosition.y
       );
       this.ballMesh.position = Vector3.Lerp(this.ballMesh.position, bTarget, 0.35);
+
+      // Keep the GLB ball in sync with the sphere position once loaded.
+      if (this.ballGlbRoot) {
+        this.ballGlbRoot.position.copyFrom(this.ballMesh.position);
+      }
     }
 
     // ------------------------------------------------------------------
@@ -289,6 +298,49 @@ export class RenderBridge {
   /** Switch the active camera perspective. Has no effect before init(). */
   setCameraMode(mode: CameraMode): void {
     this.broadcastCamera?.setMode(mode);
+  }
+
+  /**
+   * Async-load the basketball mesh from the Babylon.js asset library.
+   *
+   * Asset: https://assets.babylonjs.com/meshes/ballMesh.glb
+   *
+   * On success the procedural sphere is hidden and `ballGlbRoot` tracks the
+   * loaded mesh root so `sync()` can copy the interpolated position to it
+   * every frame.  The GLB ball is scaled to match the ~0.90 ft diameter of
+   * the procedural sphere (ballMesh.glb ships in metre scale; 0.90 ft ≈ 0.27 m,
+   * so a scale of 0.28 gives a close visual match).
+   *
+   * On failure the orange sphere remains visible with no error surface.
+   */
+  private async loadBallGlbAsync(): Promise<void> {
+    if (!this.ballMesh) return;
+    try {
+      const result = await SceneLoader.ImportMeshAsync(
+        "",
+        "https://assets.babylonjs.com/meshes/",
+        "ballMesh.glb",
+        this.scene
+      );
+
+      if (!result.meshes.length) return;
+
+      const root = result.meshes[0];
+      // Scale the GLB ball (metre-scale) down to match the foot-unit scene.
+      // The procedural sphere diameter is 0.90 ft ≈ 0.27 m; 0.28 gives a
+      // visually equivalent size.
+      root.scaling = new Vector3(0.28, 0.28, 0.28);
+
+      // Teleport to the current sphere position so there is no pop.
+      root.position.copyFrom(this.ballMesh.position);
+
+      // Hide the procedural sphere now that the GLB is ready.
+      this.ballMesh.isVisible = false;
+
+      this.ballGlbRoot = root;
+    } catch {
+      // GLB unavailable — procedural sphere remains active.
+    }
   }
 
   /** Clean up all created meshes and clear the material cache. */
@@ -305,6 +357,9 @@ export class RenderBridge {
 
     this.ballMesh?.dispose();
     this.ballMesh = null;
+
+    this.ballGlbRoot?.dispose();
+    this.ballGlbRoot = null;
 
     // Camera dispose handled by Babylon scene disposal
     this.broadcastCamera = null;
