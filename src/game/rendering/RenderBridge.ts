@@ -46,6 +46,19 @@ import { BroadcastCamera } from "./BroadcastCamera";
 /** Minimum dt in seconds before speed calculation is meaningful. */
 const MIN_DELTA_TIME = 0.0001;
 
+/**
+ * Per-frame lerp factor for player world position.
+ * Smooths visual movement so players glide rather than snap to each sim update.
+ * Matches the ball's smoothing factor so both feel equally fluid.
+ */
+const PLAYER_POS_LERP = 0.35;
+
+/**
+ * Per-frame lerp factor for player facing angle.
+ * Slower than position so turns look deliberate rather than instantaneous.
+ */
+const PLAYER_ANGLE_LERP = 0.18;
+
 /** How long each event-driven animation override lasts before expiring. */
 const OVERRIDE_DURATIONS: Partial<Record<AnimationStateName, number>> = {
   pass:      0.40,
@@ -62,11 +75,12 @@ const ENABLE_PLAYER_MODEL_UPGRADES = false;
 
 export class RenderBridge {
   private scene: Scene;
-  private playerVisuals:  Map<string, PlayerVisualEntity> = new Map();
-  private animStates:     Map<string, AnimationState>     = new Map();
-  private facingAngles:   Map<string, number>             = new Map();
-  private prevPositions:  Map<string, { x: number; z: number }> = new Map();
-  private ballMesh:       Mesh | null = null;
+  private playerVisuals:    Map<string, PlayerVisualEntity> = new Map();
+  private animStates:       Map<string, AnimationState>     = new Map();
+  private facingAngles:     Map<string, number>             = new Map();
+  private prevPositions:    Map<string, { x: number; z: number }> = new Map();
+  private smoothedPositions: Map<string, { x: number; z: number }> = new Map();
+  private ballMesh:         Mesh | null = null;
   private broadcastCamera: BroadcastCamera | null = null;
   private initialized = false;
 
@@ -103,6 +117,7 @@ export class RenderBridge {
       this.animStates.set(sp.id, makeIdleAnimState());
       this.facingAngles.set(sp.id, 0);
       this.prevPositions.set(sp.id, { x: sp.position.x, z: sp.position.y });
+      this.smoothedPositions.set(sp.id, { x: sp.position.x, z: sp.position.y });
 
       // Fire-and-forget: attempt to upgrade the primitive to a GLB model.
       // The entity will continue working with primitives if the file is absent.
@@ -197,11 +212,19 @@ export class RenderBridge {
       const dz    = worldZ - prev.z;
       const speed = dt > MIN_DELTA_TIME ? Math.sqrt(dx * dx + dz * dz) / dt : 0;
 
-      // Update facing angle from movement direction
+      // Update facing angle — lerp toward movement direction for smooth turns
       if (Math.abs(dx) > 0.02 || Math.abs(dz) > 0.02) {
-        this.facingAngles.set(sp.id, Math.atan2(dz, dx));
+        const targetAngle  = Math.atan2(dz, dx);
+        const currentAngle = this.facingAngles.get(sp.id) ?? targetAngle;
+        this.facingAngles.set(sp.id, lerpAngle(currentAngle, targetAngle, PLAYER_ANGLE_LERP));
       }
       this.prevPositions.set(sp.id, { x: worldX, z: worldZ });
+
+      // Lerp rendered position toward sim position (same approach as ball)
+      const smooth = this.smoothedPositions.get(sp.id) ?? { x: worldX, z: worldZ };
+      const smoothX = smooth.x + (worldX - smooth.x) * PLAYER_POS_LERP;
+      const smoothZ = smooth.z + (worldZ - smooth.z) * PLAYER_POS_LERP;
+      this.smoothedPositions.set(sp.id, { x: smoothX, z: smoothZ });
 
       // Determine desired animation state —
       // event-driven overrides take priority over the normal resolver
@@ -236,9 +259,10 @@ export class RenderBridge {
 
       updatePlayerVisual(
         visual,
-        worldX,
-        worldZ,
-        this.facingAngles.get(sp.id) ?? 0
+        smoothX,
+        smoothZ,
+        this.facingAngles.get(sp.id) ?? 0,
+        speed
       );
     }
 
@@ -276,6 +300,7 @@ export class RenderBridge {
     this.animStates.clear();
     this.facingAngles.clear();
     this.prevPositions.clear();
+    this.smoothedPositions.clear();
     this.animOverrides.clear();
 
     this.ballMesh?.dispose();
@@ -285,6 +310,21 @@ export class RenderBridge {
     this.broadcastCamera = null;
     this.initialized = false;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Math helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Linearly interpolate between two angles along the shortest arc.
+ * Handles wrap-around at ±π so players never spin the long way round.
+ */
+function lerpAngle(current: number, target: number, t: number): number {
+  let diff = target - current;
+  while (diff > Math.PI)  diff -= 2 * Math.PI;
+  while (diff < -Math.PI) diff += 2 * Math.PI;
+  return current + diff * t;
 }
 
 // ---------------------------------------------------------------------------
