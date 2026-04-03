@@ -2,9 +2,9 @@
  * PlayerVisual – creates and manages the 3D visual representation of a player.
  *
  * Pipeline:
- *   1. `createPlayerVisual` immediately builds a three-part humanoid primitive
- *      (legs + torso + head) so the game can start rendering without waiting
- *      for any asset download.
+ *   1. `createPlayerVisual` immediately builds a five-part humanoid primitive
+ *      (shoes + legs + torso with jersey number + arms + head) so the game can
+ *      start rendering without waiting for any asset download.
  *   2. `loadGlbForPlayer` (async, fire-and-forget) attempts to load a shared
  *      GLB model from /assets/models/players/player_base.glb.  On success the
  *      primitive meshes are hidden and the GLB hierarchy is parented to the
@@ -17,17 +17,12 @@
  *   • All players share the same geometry; team color is a per-player material
  *   • Home team uses primaryColor for jersey / secondaryColor for shorts
  *   • Away team swaps those two roles (road jersey = secondary, shorts = primary)
- *   • Jersey number is baked onto the torso via DynamicTexture
+ *   • Jersey number is baked onto the torso via DynamicTexture with player info
+ *   • Skin tone is derived from a hash of the player ID, giving natural variety
+ *   • Arm meshes extend horizontally from shoulder height
  *   • When GLB is loaded: procedural offsets are skipped; the GLB skeleton
  *     provides all motion.  The GlbAnimationController handles clip crossfades.
  *   • Dispose via `disposePlayerVisual` to avoid scene leaks
- *
- * Extensibility hooks:
- *   • Swap `player_base.glb` filename in `loadGlbForPlayer` when models vary
- *     by position (guard / forward / center).
- *   • Register additional AnimationGroup name aliases in GLB_ANIM_ALIASES.
- *   • LOD: attach a LOD system to entity.root after creation
- *   • Accessories: add child meshes to entity.root
  */
 
 import {
@@ -82,10 +77,6 @@ const NON_LOOPING_STATES = new Set<AnimationStateName>([
 
 /**
  * Manages Babylon AnimationGroup objects for a single GLB character.
- *
- * Cross-fading is driven externally via `updateBlend(blendIn)` each frame,
- * where `blendIn` comes directly from `AnimationState.blendIn`.  This keeps
- * the timing logic in `AnimationStateMachine` and the clip management here.
  */
 export class GlbAnimationController {
   private groups: Map<AnimationStateName, AnimationGroup> = new Map();
@@ -94,10 +85,8 @@ export class GlbAnimationController {
   private activeName:  AnimationStateName | null = null;
 
   constructor(allGroups: AnimationGroup[]) {
-    // Stop everything first so no clip auto-plays from the GLB import
     for (const g of allGroups) g.stop();
 
-    // Build the state-name → group mapping from aliases
     for (const [stateName, aliases] of Object.entries(GLB_ANIM_ALIASES) as [AnimationStateName, string[]][]) {
       for (const alias of aliases) {
         const found = allGroups.find(
@@ -111,20 +100,12 @@ export class GlbAnimationController {
     }
   }
 
-  /**
-   * Begin transitioning to a new animation state.
-   * Safe to call every frame — returns immediately when the state hasn't changed.
-   *
-   * The actual weight values are applied by `updateBlend` so that the caller
-   * (updatePlayerVisual) drives timing from `AnimationState.blendIn`.
-   */
   transition(name: AnimationStateName): void {
     if (name === this.activeName) return;
 
     const next = this.groups.get(name) ?? this.groups.get("idle") ?? null;
     if (!next) return;
 
-    // Stop any lingering prev group before overwriting the reference
     if (this.prevGroup && this.prevGroup !== this.activeGroup) {
       this.prevGroup.stop();
     }
@@ -140,11 +121,6 @@ export class GlbAnimationController {
     }
   }
 
-  /**
-   * Update clip weights each frame based on the current blend-in progress.
-   *
-   * @param blendIn  0 = fully the previous clip; 1 = fully the new clip.
-   */
   updateBlend(blendIn: number): void {
     if (this.activeGroup) {
       this.activeGroup.setWeightForAllAnimatables(blendIn);
@@ -160,7 +136,6 @@ export class GlbAnimationController {
     }
   }
 
-  /** Stop all clips.  Does NOT dispose them — the scene owns AnimationGroups. */
   stop(): void {
     for (const g of this.groups.values()) {
       if (g.isPlaying) g.stop();
@@ -176,42 +151,26 @@ export class GlbAnimationController {
 // ---------------------------------------------------------------------------
 
 export interface PlayerVisualConfig {
-  /** Simulation player ID — used to name meshes. */
   id: string;
   team: Team;
-  /** True if this player is on the home team. */
   isHome: boolean;
-  /** Jersey number displayed on the torso. */
   number: number;
 }
 
 export interface PlayerVisualEntity {
   id: string;
   teamId: string;
-  /** Root TransformNode — move this to reposition the entire player. */
   root: TransformNode;
-  /** Primitive fallback meshes (legs, torso, head). */
   meshes: Mesh[];
-  /** Animation state — updated by RenderBridge each frame. */
   animState: AnimationState;
-  /** Cached torso mesh for material swaps. */
   torsoMesh: Mesh;
-  /** Cached head mesh (used for arm-raise offset in primitive path). */
   headMesh: Mesh;
-  /**
-   * GLB animation controller — null until a GLB model has been loaded.
-   * When non-null, clip playback replaces the procedural motion helpers.
-   */
   glbController: GlbAnimationController | null;
-  /**
-   * True once `loadGlbForPlayer` has successfully loaded the GLB.
-   * Primitive meshes are hidden and the GLB hierarchy is active.
-   */
   glbLoaded: boolean;
 }
 
 // ---------------------------------------------------------------------------
-// Shared material cache (one material per team × side combination)
+// Shared material cache
 // ---------------------------------------------------------------------------
 
 const _matCache = new Map<string, StandardMaterial>();
@@ -220,18 +179,19 @@ function cachedMat(
   scene: Scene,
   key: string,
   color: Color3,
-  specular = new Color3(0.08, 0.08, 0.08)
+  specular = new Color3(0.10, 0.10, 0.10),
+  specularPower = 20
 ): StandardMaterial {
   const hit = _matCache.get(key);
   if (hit) return hit;
   const mat = new StandardMaterial(key, scene);
   mat.diffuseColor  = color;
   mat.specularColor = specular;
+  mat.specularPower = specularPower;
   _matCache.set(key, mat);
   return mat;
 }
 
-/** Clear the shared material cache — call when starting a new scene/game. */
 export function clearPlayerMaterialCache(): void {
   _matCache.clear();
 }
@@ -240,17 +200,11 @@ export function clearPlayerMaterialCache(): void {
 // Colour helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Safely parse a hex color string (#rgb, #rrggbb) into a Babylon Color3.
- * Falls back to white if the string is malformed.
- */
 function parseHexColor(hex: string): Color3 {
   try {
     const clean = hex.startsWith("#") ? hex : `#${hex}`;
     if (clean.length === 4) {
-      const r = clean[1];
-      const g = clean[2];
-      const b = clean[3];
+      const r = clean[1]; const g = clean[2]; const b = clean[3];
       return Color3.FromHexString(`#${r}${r}${g}${g}${b}${b}`);
     }
     if (clean.length === 7) return Color3.FromHexString(clean);
@@ -265,17 +219,30 @@ function colorToCSS(c: Color3): string {
 }
 
 // ---------------------------------------------------------------------------
-// Primitive fallback builder
+// Skin tone palette — 6 distinct tones selected by player-ID hash
 // ---------------------------------------------------------------------------
 
-/**
- * Creates a three-part humanoid primitive:
- *   Legs cylinder  (shorts color, lower body)
- *   Torso cylinder (jersey color, upper body — number baked via DynamicTexture)
- *   Head sphere    (skin tone)
- *
- * Total tessellation budget ≈ 200 triangles.
- */
+const SKIN_TONES: Color3[] = [
+  new Color3(0.92, 0.76, 0.60), // light
+  new Color3(0.86, 0.68, 0.50), // light-medium
+  new Color3(0.72, 0.54, 0.38), // medium
+  new Color3(0.58, 0.40, 0.26), // medium-dark
+  new Color3(0.42, 0.28, 0.16), // dark
+  new Color3(0.32, 0.20, 0.10), // deep
+];
+
+function skinToneForId(id: string): Color3 {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+  }
+  return SKIN_TONES[hash % SKIN_TONES.length];
+}
+
+// ---------------------------------------------------------------------------
+// Primitive fallback builder — five-part humanoid
+// ---------------------------------------------------------------------------
+
 function createPrimitiveFallback(
   scene: Scene,
   config: PlayerVisualConfig
@@ -285,52 +252,97 @@ function createPrimitiveFallback(
 
   const root = new TransformNode(`${prefix}_root`, scene);
 
-  // Determine jersey / shorts colors based on home vs away
-  const jerseyHex  = isHome ? team.primaryColor   : team.secondaryColor;
-  const shortsHex  = isHome ? team.secondaryColor  : team.primaryColor;
+  const jerseyHex   = isHome ? team.primaryColor   : team.secondaryColor;
+  const shortsHex   = isHome ? team.secondaryColor  : team.primaryColor;
   const jerseyColor = parseHexColor(jerseyHex);
   const shortsColor = parseHexColor(shortsHex);
-  const skinColor   = new Color3(0.82, 0.67, 0.52);
+  const skinColor   = skinToneForId(id);
 
-  const shortsMat = cachedMat(scene, `shorts_${team.id}_${isHome ? "home" : "away"}`, shortsColor);
-  const skinMat   = cachedMat(scene, "skin", skinColor);
+  // Slightly glossy materials for the jersey/shorts
+  const shortsMat = cachedMat(
+    scene,
+    `shorts_${team.id}_${isHome ? "home" : "away"}`,
+    shortsColor,
+    new Color3(0.12, 0.12, 0.12),
+    24
+  );
+  const skinMat = cachedMat(scene, `skin_${id}`, skinColor, new Color3(0.06, 0.04, 0.03), 12);
+
+  // --- Shoes (flattened ellipsoid at the base) ---
+  const shoe = MeshBuilder.CreateSphere(
+    `${prefix}_shoes`,
+    { diameterX: 0.85, diameterY: 0.32, diameterZ: 0.52, segments: 6 },
+    scene
+  );
+  shoe.position = new Vector3(0, 0.16, 0);
+  const shoeMat = cachedMat(scene, `shoe_${team.id}`, new Color3(0.12, 0.12, 0.14), new Color3(0.12, 0.12, 0.14), 32);
+  shoe.material = shoeMat;
+  shoe.parent   = root;
 
   // --- Legs ---
   const legs = MeshBuilder.CreateCylinder(
     `${prefix}_legs`,
-    { height: 1.7, diameter: 0.72, tessellation: 10 },
+    { height: 1.65, diameterTop: 0.74, diameterBottom: 0.64, tessellation: 10 },
     scene
   );
-  legs.position = new Vector3(0, 0.85, 0);
+  legs.position = new Vector3(0, 1.1, 0);
   legs.material = shortsMat;
   legs.parent   = root;
 
   // --- Torso (jersey) ---
   const torso = MeshBuilder.CreateCylinder(
     `${prefix}_torso`,
-    { height: 1.7, diameterTop: 0.82, diameterBottom: 0.72, tessellation: 10 },
+    { height: 1.75, diameterTop: 0.92, diameterBottom: 0.76, tessellation: 10 },
     scene
   );
-  torso.position = new Vector3(0, 2.25, 0);
+  torso.position = new Vector3(0, 2.50, 0);
   torso.material = buildNumberMaterial(scene, `${prefix}_jersey`, number, jerseyColor, shortsHex);
   torso.parent   = root;
+
+  // --- Arms (short horizontal cylinders at shoulder level) ---
+  const armMat = buildArmMaterial(scene, `${prefix}_armMat`, jerseyColor);
+
+  const leftArm = MeshBuilder.CreateCylinder(
+    `${prefix}_armL`,
+    { height: 0.70, diameter: 0.26, tessellation: 8 },
+    scene
+  );
+  leftArm.rotation.z = Math.PI / 2;
+  leftArm.position = new Vector3(0, 3.15, 0.55);
+  leftArm.material = armMat;
+  leftArm.parent   = root;
+
+  const rightArm = MeshBuilder.CreateCylinder(
+    `${prefix}_armR`,
+    { height: 0.70, diameter: 0.26, tessellation: 8 },
+    scene
+  );
+  rightArm.rotation.z = Math.PI / 2;
+  rightArm.position = new Vector3(0, 3.15, -0.55);
+  rightArm.material = armMat;
+  rightArm.parent   = root;
 
   // --- Head ---
   const head = MeshBuilder.CreateSphere(
     `${prefix}_head`,
-    { diameter: 0.68, segments: 8 },
+    { diameterX: 0.70, diameterY: 0.72, diameterZ: 0.68, segments: 8 },
     scene
   );
-  head.position = new Vector3(0, 3.4, 0);
+  head.position = new Vector3(0, 3.75, 0);
   head.material = skinMat;
   head.parent   = root;
 
-  return { root, meshes: [legs, torso, head], torsoMesh: torso, headMesh: head };
+  return {
+    root,
+    meshes: [shoe, legs, torso, leftArm, rightArm, head],
+    torsoMesh: torso,
+    headMesh: head,
+  };
 }
 
 /**
- * Build a StandardMaterial with a DynamicTexture that shows the jersey number.
- * Falls back to a plain jersey color material if canvas rendering fails.
+ * Build a StandardMaterial with a DynamicTexture showing the jersey number,
+ * a thick horizontal stripe at the hem, and faint vertical ribbing.
  */
 function buildNumberMaterial(
   scene: Scene,
@@ -340,40 +352,69 @@ function buildNumberMaterial(
   secondaryHex: string
 ): StandardMaterial {
   try {
-    const size  = 128;
+    const size  = 256;
     const tex   = new DynamicTexture(`${name}_tex`, { width: size, height: size }, scene, false);
     const ctx2d = tex.getContext() as unknown as CanvasRenderingContext2D;
 
-    ctx2d.fillStyle = colorToCSS(jerseyColor);
+    const jerseyCSS  = colorToCSS(jerseyColor);
+    const secondaryCSS = secondaryHex.startsWith("#") ? secondaryHex : `#${secondaryHex}`;
+
+    // Base jersey colour
+    ctx2d.fillStyle = jerseyCSS;
     ctx2d.fillRect(0, 0, size, size);
 
-    ctx2d.font          = "bold 72px Arial";
+    // Subtle vertical ribbing lines
+    ctx2d.strokeStyle = "rgba(0,0,0,0.08)";
+    ctx2d.lineWidth = 2;
+    for (let x = 0; x < size; x += 14) {
+      ctx2d.beginPath();
+      ctx2d.moveTo(x, 0);
+      ctx2d.lineTo(x, size);
+      ctx2d.stroke();
+    }
+
+    // Hem stripe at the bottom 18% of the texture
+    ctx2d.fillStyle = secondaryCSS;
+    ctx2d.fillRect(0, size * 0.82, size, size * 0.18);
+
+    // Jersey number — large, centred in the upper 80%
+    ctx2d.font          = "bold 110px 'Arial Black', Arial";
     ctx2d.textAlign     = "center";
     ctx2d.textBaseline  = "middle";
-    ctx2d.fillStyle     = secondaryHex.startsWith("#") ? secondaryHex : `#${secondaryHex}`;
-    ctx2d.fillText(String(number), size / 2, size / 2 + 4);
+
+    // Outline for legibility
+    ctx2d.strokeStyle = "rgba(0,0,0,0.55)";
+    ctx2d.lineWidth   = 6;
+    ctx2d.strokeText(String(number), size / 2, size * 0.40);
+
+    ctx2d.fillStyle   = secondaryCSS;
+    ctx2d.fillText(String(number), size / 2, size * 0.40);
+
     tex.update();
 
     const mat = new StandardMaterial(name, scene);
     mat.diffuseTexture = tex;
-    mat.specularColor  = new Color3(0.06, 0.06, 0.06);
+    mat.specularColor  = new Color3(0.14, 0.14, 0.14);
+    mat.specularPower  = 28;
     return mat;
   } catch {
     return cachedMat(scene, `${name}_fallback`, jerseyColor);
   }
 }
 
+/** Build an arm material that matches the jersey color with slight specularity. */
+function buildArmMaterial(scene: Scene, name: string, jerseyColor: Color3): StandardMaterial {
+  const mat = new StandardMaterial(name, scene);
+  mat.diffuseColor  = jerseyColor.scale(0.92);
+  mat.specularColor = new Color3(0.10, 0.10, 0.10);
+  mat.specularPower = 20;
+  return mat;
+}
+
 // ---------------------------------------------------------------------------
 // Public factory
 // ---------------------------------------------------------------------------
 
-/**
- * Create a PlayerVisualEntity with the primitive fallback active immediately.
- *
- * Call `loadGlbForPlayer(entity, scene)` afterwards (without await) to attempt
- * a GLB upgrade.  The entity continues to work with primitive meshes if the
- * GLB is unavailable.
- */
 export function createPlayerVisual(
   scene: Scene,
   config: PlayerVisualConfig
@@ -393,37 +434,6 @@ export function createPlayerVisual(
 // GLB async upgrade
 // ---------------------------------------------------------------------------
 
-/**
- * Attempt to load the HVGirl character model from the Babylon.js asset library
- * and attach it to an existing entity.
- *
- * Asset: https://assets.babylonjs.com/meshes/HVGirl.glb
- * Animations bundled in HVGirl.glb: Idle, Walk, Run, Dance
- *   • Idle  → AnimationStateName "idle"
- *   • Walk  → AnimationStateName "jog"
- *   • Run   → AnimationStateName "run"
- *   • Dance → AnimationStateName "celebrate"
- *
- * HVGirl is modelled in metres; the CollegeBall court uses feet as the
- * Babylon unit (94 ft × 50 ft court).  A scale of 3.5 makes her approximately
- * 6 ft tall in the scene — close to an NCAA player's height.  Adjust the
- * constant below if the model source changes.
- *
- * On success:
- *   • The imported mesh hierarchy is parented to entity.root.
- *   • entity.root.scaling is set to GLB_PLAYER_SCALE to convert metres→feet.
- *   • Primitive fallback meshes are hidden (not disposed — they serve as a
- *     safety net if the GLB is later found to be unusable).
- *   • entity.glbController is created to manage animation groups.
- *   • entity.glbLoaded is set to true.
- *
- * On failure the entity continues using primitive meshes silently.
- *
- * Fire-and-forget usage:
- *   loadGlbForPlayer(scene, entity); // no await needed
- */
-
-/** Scale applied to entity.root when HVGirl is loaded (metres → court feet). */
 const GLB_PLAYER_SCALE = 3.5;
 
 export async function loadGlbForPlayer(
@@ -440,18 +450,14 @@ export async function loadGlbForPlayer(
 
     if (!result.meshes.length) return;
 
-    // Scale entity.root so the metre-scale character fits the foot-unit court.
-    // This must be done before parenting so the GLB children inherit the scale.
     entity.root.scaling = new Vector3(GLB_PLAYER_SCALE, GLB_PLAYER_SCALE, GLB_PLAYER_SCALE);
 
-    // Parent all root-level meshes from the GLB to entity.root
     for (const mesh of result.meshes) {
       if (!mesh.parent) {
         mesh.parent = entity.root;
       }
     }
 
-    // Hide primitive fallback meshes
     for (const mesh of entity.meshes) {
       mesh.isVisible = false;
     }
@@ -459,7 +465,7 @@ export async function loadGlbForPlayer(
     entity.glbController = new GlbAnimationController(result.animationGroups);
     entity.glbLoaded     = true;
   } catch {
-    // GLB unavailable or load failed — primitive fallback remains active.
+    // GLB unavailable — primitive fallback remains active.
   }
 }
 
@@ -467,24 +473,8 @@ export async function loadGlbForPlayer(
 // Per-frame update
 // ---------------------------------------------------------------------------
 
-const HEAD_ARM_RAISE_MAX = 0.30; // units upward at full arm-raise (primitive path)
+const HEAD_ARM_RAISE_MAX = 0.30;
 
-/**
- * Reposition the visual entity and apply animation for the current frame.
- *
- * GLB path (glbLoaded = true):
- *   • Sets root position / rotation only.
- *   • Delegates clip selection and weight blending to GlbAnimationController.
- *   • No procedural offsets applied (the skeleton handles all motion).
- *
- * Primitive path (glbLoaded = false):
- *   • Applies procedural bob, lean, and arm-raise offsets.
- *
- * @param worldX      Sim x mapped to Babylon x
- * @param worldZ      Sim y mapped to Babylon z
- * @param facingAngle Rotation around Y axis in radians
- * @param speed       Movement speed in ft/s — drives procedural animation frequency
- */
 export function updatePlayerVisual(
   entity: PlayerVisualEntity,
   worldX: number,
@@ -497,20 +487,18 @@ export function updatePlayerVisual(
   entity.root.rotation.y = facingAngle;
 
   if (entity.glbLoaded && entity.glbController) {
-    // GLB path: let the controller manage clip playback and crossfading
     entity.root.position.y = 0;
     entity.root.rotation.z = 0;
     entity.glbController.transition(entity.animState.name);
     entity.glbController.updateBlend(entity.animState.blendIn);
   } else {
-    // Primitive path: apply procedural motion offsets
     const bob      = getProceduralBob(entity.animState, speed);
     const lean     = getProceduralLean(entity.animState, speed);
     const armRaise = getArmRaise(entity.animState);
 
     entity.root.position.y = bob;
     entity.root.rotation.z = lean;
-    entity.headMesh.position.y = 3.4 + armRaise * HEAD_ARM_RAISE_MAX;
+    entity.headMesh.position.y = 3.75 + armRaise * HEAD_ARM_RAISE_MAX;
   }
 }
 
@@ -518,7 +506,6 @@ export function updatePlayerVisual(
 // Cleanup
 // ---------------------------------------------------------------------------
 
-/** Dispose all meshes and the root node. Stops any playing GLB clips. */
 export function disposePlayerVisual(entity: PlayerVisualEntity): void {
   entity.glbController?.stop();
   for (const mesh of entity.meshes) {

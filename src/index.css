@@ -18,8 +18,8 @@ body,
 body {
   margin: 0;
   background:
-    radial-gradient(circle at top, rgba(56, 189, 248, 0.16), transparent 30%),
-    linear-gradient(180deg, #07111b 0%, #040a12 100%);
+    radial-gradient(circle at top, rgba(56, 189, 248, 0.14), transparent 28%),
+    linear-gradient(180deg, #06101a 0%, #040a12 100%);
 }
 
 body::before {
@@ -28,8 +28,8 @@ body::before {
   inset: 0;
   pointer-events: none;
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+    linear-gradient(rgba(255, 255, 255, 0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
   background-size: 100% 36px, 36px 100%;
   mask-image: radial-gradient(circle at center, black 30%, transparent 85%);
   opacity: 0.2;
@@ -43,6 +43,10 @@ button {
   box-sizing: border-box;
 }
 
+/* ─────────────────────────────────────────────
+   Entrance animations
+───────────────────────────────────────────── */
+
 @keyframes polishRise {
   from {
     opacity: 0;
@@ -55,8 +59,7 @@ button {
 }
 
 @keyframes polishGlow {
-  0%,
-  100% {
+  0%, 100% {
     opacity: 0.55;
     transform: scale(1);
   }
@@ -70,18 +73,70 @@ button {
   animation: polishRise 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.polish-delay-1 {
-  animation-delay: 90ms;
-}
-
-.polish-delay-2 {
-  animation-delay: 180ms;
-}
-
-.polish-delay-3 {
-  animation-delay: 270ms;
-}
+.polish-delay-1 { animation-delay: 90ms; }
+.polish-delay-2 { animation-delay: 180ms; }
+.polish-delay-3 { animation-delay: 270ms; }
 
 .polish-glow {
   animation: polishGlow 5.5s ease-in-out infinite;
+}
+
+/* ─────────────────────────────────────────────
+   Score flash — fires when a team scores
+───────────────────────────────────────────── */
+
+@keyframes scoreFlash {
+  0%   { transform: scale(1);    opacity: 1; }
+  20%  { transform: scale(1.28); opacity: 1; }
+  55%  { transform: scale(1.10); opacity: 1; }
+  100% { transform: scale(1);    opacity: 1; }
+}
+
+.score-flash {
+  animation: scoreFlash 600ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ─────────────────────────────────────────────
+   Possession arrow pulse
+───────────────────────────────────────────── */
+
+@keyframes possessionPulse {
+  0%, 100% { opacity: 1;    transform: scale(1); }
+  50%       { opacity: 0.65; transform: scale(0.85); }
+}
+
+.possession-pulse {
+  animation: possessionPulse 1.4s ease-in-out infinite;
+}
+
+/* ─────────────────────────────────────────────
+   Shot-clock urgency pulse (≤5 s)
+───────────────────────────────────────────── */
+
+@keyframes shotClockUrgent {
+  0%, 100% { transform: scale(1);    box-shadow: 0 0 6px rgba(220, 38, 38, 0.55); }
+  50%       { transform: scale(1.06); box-shadow: 0 0 14px rgba(220, 38, 38, 0.80); }
+}
+
+.shot-clock-urgent {
+  animation: shotClockUrgent 0.7s ease-in-out infinite;
+}
+
+/* ─────────────────────────────────────────────
+   Event feed slide-in from right
+───────────────────────────────────────────── */
+
+@keyframes feedSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.feed-entry {
+  animation: feedSlideIn 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }

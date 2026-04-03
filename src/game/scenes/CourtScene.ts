@@ -2,11 +2,14 @@
  * CourtScene – builds the basketball-court Babylon scene geometry.
  *
  * Sets up:
- *   • Polished hardwood floor with specular reflection
+ *   • Polished hardwood floor with wood-grain DynamicTexture
+ *   • Painted key (lane) areas with a contrasting fill colour
  *   • Full court markings (boundaries, half-court, three-point arcs,
  *     key, free-throw circles, restricted area arcs, centre circle)
- *   • Centre-court logo placeholder disc
- *   • Full basket assemblies (stanchion, arm, backboard, rim, net)
+ *   • Centre-court logo disc with concentric accent rings
+ *   • Full basket assemblies (stanchion, arm, backboard, rim, net rings)
+ *   • Shot-clock display boards above each basket
+ *   • Arena seating banks behind each baseline and along both sidelines
  *   • Bench zone placeholders on each sideline
  *   • Scorer's table placeholder at half-court
  *   • Arena lighting via ArenaLighting helpers
@@ -26,6 +29,7 @@ import {
   Color4,
   Vector3,
   Mesh,
+  DynamicTexture,
 } from "@babylonjs/core";
 
 import {
@@ -73,24 +77,34 @@ const BACKBOARD_X_OFFSET = 4; // distance inward from baseline
  * Returns the court floor mesh so the caller can register it for shadows.
  */
 export function setupCourtScene(scene: Scene): { floorMesh: Mesh } {
-  // Background — dark arena black
-  scene.clearColor = new Color4(0.05, 0.05, 0.08, 1);
+  // Background — deep arena black
+  scene.clearColor = new Color4(0.03, 0.03, 0.06, 1);
 
-  // Arena lighting (no shadows in default path for performance)
-  setupArenaLighting(scene, false);
+  // Arena lighting (shadows enabled for broadcast quality)
+  setupArenaLighting(scene, true);
 
-  // Floor
+  // Floor with wood-grain texture
   const floorMesh = buildFloor(scene);
 
-  // Court markings
+  // Painted key areas (filled colour rectangles)
+  buildPaintedKeys(scene);
+
+  // Court markings (lines on top of paint)
   buildCourtMarkings(scene);
 
-  // Centre logo placeholder
+  // Centre logo placeholder with accent rings
   buildCentreLogoDisc(scene);
 
   // Basket assemblies (home = left, away = right)
   buildBasketAssembly(scene, BASKET_X_HOME, 1);  // facing right (+x)
   buildBasketAssembly(scene, BASKET_X_AWAY, -1); // facing left  (-x)
+
+  // Shot-clock display boards above each basket
+  buildShotClockBoard(scene, BASKET_X_HOME, 1);
+  buildShotClockBoard(scene, BASKET_X_AWAY, -1);
+
+  // Arena seating banks
+  buildArenaSeating(scene);
 
   // Bench zones and scorer's table
   buildSidelineFurniture(scene);
@@ -99,7 +113,7 @@ export function setupCourtScene(scene: Scene): { floorMesh: Mesh } {
 }
 
 // ---------------------------------------------------------------------------
-// Floor
+// Floor — hardwood with procedural wood-grain texture
 // ---------------------------------------------------------------------------
 
 function buildFloor(scene: Scene): Mesh {
@@ -109,13 +123,106 @@ function buildFloor(scene: Scene): Mesh {
     scene
   );
 
+  const texSize = 1024;
+  const tex = new DynamicTexture("woodGrainTex", { width: texSize, height: texSize }, scene, false);
+  const ctx = tex.getContext() as unknown as CanvasRenderingContext2D;
+
+  // Base maple colour
+  ctx.fillStyle = "#c0935d";
+  ctx.fillRect(0, 0, texSize, texSize);
+
+  // Plank seams — vertical lines along the length of the court
+  const PLANK_COUNT = 22;
+  const plankW = texSize / PLANK_COUNT;
+  ctx.strokeStyle = "rgba(100, 62, 20, 0.45)";
+  ctx.lineWidth = 1.5;
+  for (let i = 1; i < PLANK_COUNT; i++) {
+    const x = i * plankW;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, texSize);
+    ctx.stroke();
+  }
+
+  // Subtle grain streaks
+  ctx.strokeStyle = "rgba(90, 55, 15, 0.18)";
+  ctx.lineWidth = 0.8;
+  for (let i = 0; i < 80; i++) {
+    const x = Math.random() * texSize;
+    const len = 60 + Math.random() * 120;
+    const y = Math.random() * texSize;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.bezierCurveTo(
+      x + (Math.random() - 0.5) * 10, y + len * 0.33,
+      x + (Math.random() - 0.5) * 10, y + len * 0.66,
+      x + (Math.random() - 0.5) * 8, y + len
+    );
+    ctx.stroke();
+  }
+
+  // Lighter highlight stripe in each plank centre
+  ctx.strokeStyle = "rgba(220, 175, 110, 0.22)";
+  ctx.lineWidth = plankW * 0.32;
+  for (let i = 0; i < PLANK_COUNT; i++) {
+    const cx = (i + 0.5) * plankW;
+    ctx.beginPath();
+    ctx.moveTo(cx, 0);
+    ctx.lineTo(cx, texSize);
+    ctx.stroke();
+  }
+
+  tex.update();
+
   const mat = new StandardMaterial("courtFloorMat", scene);
-  mat.diffuseColor = new Color3(0.74, 0.58, 0.38); // warm maple hardwood
-  mat.specularColor = new Color3(0.22, 0.20, 0.16); // polished gloss
-  mat.specularPower = 48;
+  mat.diffuseTexture = tex;
+  mat.specularColor = new Color3(0.28, 0.24, 0.18); // polished gloss
+  mat.specularPower = 64;
   floor.material = mat;
 
   return floor;
+}
+
+// ---------------------------------------------------------------------------
+// Painted key (lane) areas
+// ---------------------------------------------------------------------------
+
+/**
+ * Fill both key boxes with a coloured plane just above the floor.
+ * College courts often use a school colour for the lane; here we use a
+ * deep navy that reads well against the maple floor.
+ */
+function buildPaintedKeys(scene: Scene): void {
+  const paintMat = new StandardMaterial("keyPaintMat", scene);
+  paintMat.diffuseColor = new Color3(0.10, 0.18, 0.42); // deep navy
+  paintMat.specularColor = new Color3(0.12, 0.12, 0.18);
+  paintMat.specularPower = 32;
+
+  // Home key (left end)
+  const homeKey = MeshBuilder.CreateGround(
+    "homeKeyPaint",
+    { width: KEY_DEPTH, height: KEY_WIDTH },
+    scene
+  );
+  homeKey.position = new Vector3(
+    -HALF_LENGTH + KEY_DEPTH / 2,
+    0.006, // just above floor, below line markers
+    0
+  );
+  homeKey.material = paintMat;
+
+  // Away key (right end)
+  const awayKey = MeshBuilder.CreateGround(
+    "awayKeyPaint",
+    { width: KEY_DEPTH, height: KEY_WIDTH },
+    scene
+  );
+  awayKey.position = new Vector3(
+    HALF_LENGTH - KEY_DEPTH / 2,
+    0.006,
+    0
+  );
+  awayKey.material = paintMat;
 }
 
 // ---------------------------------------------------------------------------
@@ -144,11 +251,9 @@ function buildCourtMarkings(scene: Scene): void {
   circle(scene, lineColor, Vector3.Zero(), CENTRE_CIRCLE_R, LINE_Y, 48);
 
   // Three-point arcs — home (left) and away (right)
-  // NCAA: corner 3 begins at 22 ft from basket, arc extends from there
   const homePivot = new Vector3(BASKET_X_HOME, LINE_Y, 0);
   const awayPivot = new Vector3(BASKET_X_AWAY, LINE_Y, 0);
 
-  // Straight corner segments for 3-point line
   const cornerX_home = -HALF_LENGTH + 3.0;
   const cornerX_away = HALF_LENGTH - 3.0;
 
@@ -214,22 +319,36 @@ function buildKey(
 }
 
 // ---------------------------------------------------------------------------
-// Centre logo placeholder
+// Centre logo placeholder with concentric accent rings
 // ---------------------------------------------------------------------------
 
 function buildCentreLogoDisc(scene: Scene): void {
+  // Outer accent ring (gold)
+  const outerRing = MeshBuilder.CreateDisc(
+    "centreLogoOuter",
+    { radius: CENTRE_CIRCLE_R - 0.25, tessellation: 48 },
+    scene
+  );
+  outerRing.rotation.x = Math.PI / 2;
+  outerRing.position = new Vector3(0, 0.006, 0);
+  const outerMat = new StandardMaterial("centreLogoOuterMat", scene);
+  outerMat.diffuseColor = new Color3(0.72, 0.58, 0.22); // gold ring
+  outerMat.specularColor = new Color3(0.3, 0.25, 0.08);
+  outerMat.specularPower = 48;
+  outerRing.material = outerMat;
+
+  // Inner navy disc
   const disc = MeshBuilder.CreateDisc(
     "centreLogo",
-    { radius: CENTRE_CIRCLE_R - 0.4, tessellation: 48 },
+    { radius: CENTRE_CIRCLE_R - 0.9, tessellation: 48 },
     scene
   );
   disc.rotation.x = Math.PI / 2;
-  disc.position = new Vector3(0, 0.008, 0);
-
+  disc.position = new Vector3(0, 0.007, 0);
   const mat = new StandardMaterial("centreLogoMat", scene);
-  mat.diffuseColor = new Color3(0.68, 0.52, 0.32); // slightly darker inlay
-  mat.specularColor = new Color3(0.15, 0.13, 0.10);
-  mat.specularPower = 32;
+  mat.diffuseColor = new Color3(0.10, 0.16, 0.38); // navy inlay
+  mat.specularColor = new Color3(0.10, 0.10, 0.16);
+  mat.specularPower = 40;
   disc.material = mat;
 }
 
@@ -249,28 +368,26 @@ function buildBasketAssembly(
 ): void {
   const tag = direction === 1 ? "home" : "away";
 
-  // Stanchion base (on the baseline, behind the basket)
   const baseX = basketX - direction * 2.5; // stanchion base behind baseline
 
-  const stanchionMat = createMat(scene, `stanchion_${tag}`, new Color3(0.25, 0.25, 0.28));
+  const stanchionMat = createMat(scene, `stanchion_${tag}`, new Color3(0.22, 0.22, 0.26), new Color3(0.15, 0.15, 0.15), 32);
   const boardMat = createMat(
     scene, `board_${tag}`,
-    new Color3(0.88, 0.92, 0.96),
-    new Color3(0.4, 0.4, 0.4),
-    64
+    new Color3(0.88, 0.93, 0.97),
+    new Color3(0.55, 0.55, 0.60),
+    96
   );
-  const rimMat = createMat(scene, `rim_${tag}`, new Color3(1.0, 0.4, 0.1), new Color3(0.5, 0.25, 0.05), 80);
-  const netMat = createMat(scene, `net_${tag}`, new Color3(0.95, 0.95, 0.95));
-  netMat.wireframe = true;
+  const rimMat = createMat(scene, `rim_${tag}`, new Color3(1.0, 0.38, 0.08), new Color3(0.6, 0.28, 0.04), 96);
+  const netMat = createMat(scene, `net_${tag}`, new Color3(0.92, 0.92, 0.90), new Color3(0.05, 0.05, 0.05), 8);
 
   // --- Stanchion pole ---
-  const pole = MeshBuilder.CreateCylinder(`pole_${tag}`, { height: 13, diameter: 0.35, tessellation: 8 }, scene);
+  const pole = MeshBuilder.CreateCylinder(`pole_${tag}`, { height: 13, diameter: 0.3, tessellation: 10 }, scene);
   pole.position = new Vector3(baseX, 6.5, 0);
   pole.material = stanchionMat;
 
-  // --- Horizontal arm (from top of pole to backboard) ---
+  // --- Horizontal arm ---
   const armLength = Math.abs(basketX + BACKBOARD_X_OFFSET * direction - baseX);
-  const arm = MeshBuilder.CreateBox(`arm_${tag}`, { width: armLength, height: 0.3, depth: 0.3 }, scene);
+  const arm = MeshBuilder.CreateBox(`arm_${tag}`, { width: armLength, height: 0.25, depth: 0.25 }, scene);
   arm.position = new Vector3(
     (baseX + basketX + BACKBOARD_X_OFFSET * direction) / 2,
     13,
@@ -281,49 +398,166 @@ function buildBasketAssembly(
   // --- Backboard ---
   const board = MeshBuilder.CreateBox(
     `backboard_${tag}`,
-    { width: 0.18, height: 3.5, depth: 5.8 },
+    { width: 0.16, height: 3.5, depth: 5.8 },
     scene
   );
   board.position = new Vector3(basketX + BACKBOARD_X_OFFSET * direction, 11.75, 0);
   board.material = boardMat;
 
-  // Inner rectangle on backboard (white target square)
+  // Inner target rectangle on backboard
   const inner = MeshBuilder.CreateBox(
     `bbInner_${tag}`,
     { width: 0.05, height: 1.5, depth: 2.2 },
     scene
   );
   inner.position = new Vector3(
-    basketX + BACKBOARD_X_OFFSET * direction - direction * 0.12,
+    basketX + BACKBOARD_X_OFFSET * direction - direction * 0.10,
     RIM_HEIGHT + 0.3,
     0
   );
-  const innerMat = createMat(scene, `bbInner_mat_${tag}`, new Color3(1, 1, 1));
+  const innerMat = createMat(scene, `bbInner_mat_${tag}`, new Color3(1, 1, 1), new Color3(0.3, 0.3, 0.3), 32);
   inner.material = innerMat;
 
   // --- Rim (torus) ---
   const rim = MeshBuilder.CreateTorus(
     `rim_${tag}`,
-    { diameter: 1.52, thickness: 0.08, tessellation: 24 },
+    { diameter: 1.52, thickness: 0.10, tessellation: 28 },
     scene
   );
   rim.position = new Vector3(basketX, RIM_HEIGHT, 0);
   rim.rotation.x = Math.PI / 2;
   rim.material = rimMat;
 
-  // --- Net (tapered cylinder, wireframe) ---
-  const net = MeshBuilder.CreateCylinder(
-    `net_${tag}`,
-    { height: 1.2, diameterTop: 1.44, diameterBottom: 0.8, tessellation: 12 },
-    scene
-  );
-  net.position = new Vector3(basketX, RIM_HEIGHT - 0.65, 0);
-  net.material = netMat;
+  // --- Net — stacked rings that taper inward (replaces wireframe cylinder) ---
+  const NET_RINGS = 6;
+  const netTopR = 0.70;
+  const netBottomR = 0.36;
+  const netTopY = RIM_HEIGHT - 0.10;
+  const netBotY = RIM_HEIGHT - 1.15;
+  for (let i = 0; i < NET_RINGS; i++) {
+    const t = i / (NET_RINGS - 1);
+    const ringR = netTopR + (netBottomR - netTopR) * t;
+    const ringY = netTopY + (netBotY - netTopY) * t;
+    const ring = MeshBuilder.CreateTorus(
+      `net_ring_${tag}_${i}`,
+      { diameter: ringR * 2, thickness: 0.045, tessellation: 14 },
+      scene
+    );
+    ring.position = new Vector3(basketX, ringY, 0);
+    ring.rotation.x = Math.PI / 2;
+    ring.material = netMat;
+  }
 
   // --- Stanchion base plate ---
-  const base = MeshBuilder.CreateBox(`base_${tag}`, { width: 2.0, height: 0.2, depth: 2.0 }, scene);
-  base.position = new Vector3(baseX, 0.1, 0);
+  const base = MeshBuilder.CreateBox(`base_${tag}`, { width: 2.2, height: 0.18, depth: 2.2 }, scene);
+  base.position = new Vector3(baseX, 0.09, 0);
   base.material = stanchionMat;
+}
+
+// ---------------------------------------------------------------------------
+// Shot-clock display board above each basket
+// ---------------------------------------------------------------------------
+
+function buildShotClockBoard(scene: Scene, basketX: number, direction: 1 | -1): void {
+  const tag = direction === 1 ? "home" : "away";
+
+  const boardMat = new StandardMaterial(`shotClockBoardMat_${tag}`, scene);
+  boardMat.diffuseColor = new Color3(0.08, 0.08, 0.10);
+  boardMat.specularColor = new Color3(0.05, 0.05, 0.05);
+
+  const screenMat = new StandardMaterial(`shotClockScreenMat_${tag}`, scene);
+  screenMat.diffuseColor = new Color3(0.05, 0.22, 0.06); // dark green LED look
+  screenMat.emissiveColor = new Color3(0.0, 0.08, 0.02);
+
+  // Board housing
+  const bx = basketX + BACKBOARD_X_OFFSET * direction;
+  const board = MeshBuilder.CreateBox(`shotClockBoard_${tag}`, { width: 0.1, height: 1.0, depth: 2.6 }, scene);
+  board.position = new Vector3(bx, 14.6, 0);
+  board.material = boardMat;
+
+  // LED screen face
+  const screen = MeshBuilder.CreateBox(`shotClockScreen_${tag}`, { width: 0.08, height: 0.7, depth: 2.2 }, scene);
+  screen.position = new Vector3(bx - direction * 0.05, 14.6, 0);
+  screen.material = screenMat;
+}
+
+// ---------------------------------------------------------------------------
+// Arena seating banks
+// ---------------------------------------------------------------------------
+
+/**
+ * Simple tiered seating boxes behind each baseline and along both sidelines.
+ * These create the arena silhouette visible in broadcast camera mode.
+ */
+function buildArenaSeating(scene: Scene): void {
+  const seatDark = new StandardMaterial("seatDarkMat", scene);
+  seatDark.diffuseColor = new Color3(0.08, 0.08, 0.12);
+  seatDark.specularColor = new Color3(0.02, 0.02, 0.02);
+
+  const seatMid = new StandardMaterial("seatMidMat", scene);
+  seatMid.diffuseColor = new Color3(0.12, 0.12, 0.18);
+  seatMid.specularColor = new Color3(0.02, 0.02, 0.02);
+
+  const seatAccent = new StandardMaterial("seatAccentMat", scene);
+  seatAccent.diffuseColor = new Color3(0.18, 0.10, 0.08);
+  seatAccent.specularColor = new Color3(0.02, 0.02, 0.02);
+
+  const SEAT_TIERS = 3;
+  const TIER_HEIGHT = 4.5;
+  const TIER_DEPTH = 8;
+
+  // -- Behind baseline (home end, -X) --
+  for (let t = 0; t < SEAT_TIERS; t++) {
+    const w = COURT_WIDTH + 14 + t * 6;
+    const h = TIER_HEIGHT;
+    const d = TIER_DEPTH;
+    const xBase = -HALF_LENGTH - 4 - t * TIER_DEPTH - d / 2;
+    const y = t * TIER_HEIGHT + h / 2;
+    const mat = t === 1 ? seatAccent : (t === 0 ? seatMid : seatDark);
+
+    const tier = MeshBuilder.CreateBox(`seatHomeEnd_t${t}`, { width: d, height: h, depth: w }, scene);
+    tier.position = new Vector3(xBase, y, 0);
+    tier.material = mat;
+  }
+
+  // -- Behind baseline (away end, +X) --
+  for (let t = 0; t < SEAT_TIERS; t++) {
+    const w = COURT_WIDTH + 14 + t * 6;
+    const h = TIER_HEIGHT;
+    const d = TIER_DEPTH;
+    const xBase = HALF_LENGTH + 4 + t * TIER_DEPTH + d / 2;
+    const y = t * TIER_HEIGHT + h / 2;
+    const mat = t === 1 ? seatAccent : (t === 0 ? seatMid : seatDark);
+
+    const tier = MeshBuilder.CreateBox(`seatAwayEnd_t${t}`, { width: d, height: h, depth: w }, scene);
+    tier.position = new Vector3(xBase, y, 0);
+    tier.material = mat;
+  }
+
+  // -- Sideline seating (both sides) --
+  for (const side of [1, -1] as const) {
+    for (let t = 0; t < SEAT_TIERS; t++) {
+      const len = COURT_LENGTH + 10;
+      const h = TIER_HEIGHT;
+      const d = TIER_DEPTH;
+      const zBase = side * (HALF_WIDTH + 3 + t * TIER_DEPTH + d / 2);
+      const y = t * TIER_HEIGHT + h / 2;
+      const mat = t === 1 ? seatAccent : (t === 0 ? seatMid : seatDark);
+
+      const tier = MeshBuilder.CreateBox(`seatSide_${side > 0 ? "pos" : "neg"}_t${t}`, { width: len, height: h, depth: d }, scene);
+      tier.position = new Vector3(0, y, zBase);
+      tier.material = mat;
+    }
+  }
+
+  // -- Arena ceiling/rafters suggestion: a dark overhead plane at height ~55 ft --
+  const ceiling = MeshBuilder.CreateGround("arenaCeiling", { width: COURT_LENGTH + 80, height: COURT_WIDTH + 80 }, scene);
+  ceiling.position = new Vector3(0, 56, 0);
+  ceiling.rotation.x = Math.PI; // flip so normals face down
+  const ceilMat = new StandardMaterial("ceilMat", scene);
+  ceilMat.diffuseColor = new Color3(0.04, 0.04, 0.06);
+  ceilMat.specularColor = Color3.Black();
+  ceiling.material = ceilMat;
 }
 
 // ---------------------------------------------------------------------------
@@ -331,28 +565,26 @@ function buildBasketAssembly(
 // ---------------------------------------------------------------------------
 
 function buildSidelineFurniture(scene: Scene): void {
-  const benchMat = createMat(scene, "benchMat", new Color3(0.22, 0.22, 0.24));
-  const tableMat = createMat(scene, "tableMat", new Color3(0.30, 0.28, 0.26));
+  const benchMat = createMat(scene, "benchMat", new Color3(0.20, 0.20, 0.22));
+  const tableMat = createMat(scene, "tableMat", new Color3(0.28, 0.26, 0.24));
 
-  const benchZ = HALF_WIDTH + 2.5; // just outside the sideline
+  const benchZ = HALF_WIDTH + 2.5;
   const benchLength = 18;
   const benchHeight = 0.5;
 
-  // Home bench (left side, +Z sideline)
   const homeBench = MeshBuilder.CreateBox("homeBench", {
     width: benchLength, height: benchHeight, depth: 2.0,
   }, scene);
   homeBench.position = new Vector3(-12, benchHeight / 2, benchZ);
   homeBench.material = benchMat;
 
-  // Away bench (left side, -Z sideline)
   const awayBench = MeshBuilder.CreateBox("awayBench", {
     width: benchLength, height: benchHeight, depth: 2.0,
   }, scene);
   awayBench.position = new Vector3(12, benchHeight / 2, -benchZ);
   awayBench.material = benchMat;
 
-  // Scorer's table (at half-court, +Z sideline)
+  // Scorer's table
   const table = MeshBuilder.CreateBox("scorersTable", {
     width: 12, height: 0.9, depth: 1.5,
   }, scene);
