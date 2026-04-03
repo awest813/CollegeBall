@@ -1,27 +1,24 @@
 /**
- * ArenaLighting – broadcast-quality three-point light rig for the court scene.
+ * ArenaLighting – broadcast-quality lighting rig for the court scene.
  *
  * Light roles:
- *   ambient  – very dark hemisphere, provides base illumination / arena feel
+ *   ambient  – very dark hemisphere; base fill and sky-dome colour
  *   key      – strong warm directional from above the scorer's table side;
  *              the primary shadow-casting light
  *   fill     – soft cool directional from the opposite side; opens shadows
  *   rim      – subtle backlight for silhouette separation on players
- *
- * The three-light setup is inspired by TV broadcast production:
- * "stylized low-poly players with nice arena lighting that makes them look
- *  significantly better than the raw model budget would suggest."
+ *   overhead – four SpotLights above the court simulating arena catwalks
  *
  * Shadow notes:
- *   Shadows are optional (enableShadows flag).  Keep disabled for lower-end
- *   devices; the lighting alone makes a significant visual difference.
- *   When enabled, only the key light casts shadows at 512×512 (performance safe).
+ *   Key light casts shadows at 1024×1024 blur-exponential quality.
+ *   Set enableShadows = false on lower-end devices for a performance gain.
  */
 
 import {
   Scene,
   DirectionalLight,
   HemisphericLight,
+  SpotLight,
   ShadowGenerator,
   Vector3,
   Color3,
@@ -33,13 +30,14 @@ export interface ArenaLightingResult {
   keyLight: DirectionalLight;
   fillLight: DirectionalLight;
   rimLight: DirectionalLight;
+  overheadLights: SpotLight[];
   /** Null when shadows are disabled. */
   shadowGenerator: ShadowGenerator | null;
 }
 
 export function setupArenaLighting(
   scene: Scene,
-  enableShadows = false
+  enableShadows = true
 ): ArenaLightingResult {
   // ----- Ambient (hemisphere — very dark for arena feel) -----
   const ambient = new HemisphericLight(
@@ -47,51 +45,84 @@ export function setupArenaLighting(
     new Vector3(0, 1, 0),
     scene
   );
-  ambient.intensity = 0.22;
-  ambient.diffuse = new Color3(0.45, 0.48, 0.60);  // slightly cool sky dome
-  ambient.groundColor = new Color3(0.10, 0.09, 0.11); // near-black underside
+  ambient.intensity = 0.18;
+  ambient.diffuse = new Color3(0.38, 0.42, 0.58);    // cool sky dome
+  ambient.groundColor = new Color3(0.08, 0.07, 0.10); // near-black underside
 
   // ----- Key light (warm, from scorer's-table side, elevated) -----
   const key = new DirectionalLight(
     "arenaKey",
-    new Vector3(-0.35, -1.0, 0.18),
+    new Vector3(-0.32, -1.0, 0.20),
     scene
   );
-  key.position = new Vector3(-15, 55, 8); // used for shadow frustum
-  key.intensity = 1.6;
-  key.diffuse = new Color3(1.00, 0.96, 0.84); // warm arena-tungsten
-  key.specular = new Color3(0.85, 0.82, 0.70);
+  key.position = new Vector3(-18, 58, 10);
+  key.intensity = 1.55;
+  key.diffuse = new Color3(1.00, 0.95, 0.82); // warm arena-tungsten
+  key.specular = new Color3(0.90, 0.86, 0.72);
 
   // ----- Fill light (cool, opposite side, softer) -----
   const fill = new DirectionalLight(
     "arenaFill",
-    new Vector3(0.28, -0.75, -0.12),
+    new Vector3(0.25, -0.70, -0.15),
     scene
   );
-  fill.intensity = 0.60;
-  fill.diffuse = new Color3(0.72, 0.78, 1.00); // cooler blue-white
+  fill.intensity = 0.55;
+  fill.diffuse = new Color3(0.68, 0.76, 1.00); // cooler blue-white
   fill.specular = new Color3(0.0, 0.0, 0.0);   // no fill specular
 
   // ----- Rim / separation light (subtle back light, cool) -----
   const rim = new DirectionalLight(
     "arenaRim",
-    new Vector3(0.0, -0.28, -1.0),
+    new Vector3(0.0, -0.25, -1.0),
     scene
   );
-  rim.intensity = 0.18;
-  rim.diffuse = new Color3(0.55, 0.65, 1.00);
+  rim.intensity = 0.20;
+  rim.diffuse = new Color3(0.50, 0.62, 1.00);
   rim.specular = new Color3(0.0, 0.0, 0.0);
 
-  // ----- Optional shadows (key light only) -----
+  // ----- Overhead arena catwalk SpotLights -----
+  // Four lights positioned above the court at different positions to
+  // simulate the multi-point lighting rig of a real arena.
+  const overheadPositions: [number, number, number][] = [
+    [-20,  48,  14],  // near-scorer, left quadrant
+    [ 20,  48,  14],  // far end, left quadrant
+    [-20,  48, -14],  // near-scorer, right quadrant
+    [ 20,  48, -14],  // far end, right quadrant
+  ];
+
+  const overheadLights: SpotLight[] = overheadPositions.map((pos, i) => {
+    const spot = new SpotLight(
+      `arenaOverhead_${i}`,
+      new Vector3(...pos),
+      new Vector3(0, -1, 0),  // point straight down
+      Math.PI / 3.2,           // 56° cone
+      2.5,                     // soft falloff exponent
+      scene
+    );
+    spot.intensity = 0.30;
+    spot.diffuse = new Color3(0.95, 0.92, 0.82); // warm white
+    spot.specular = new Color3(0.40, 0.38, 0.30);
+    return spot;
+  });
+
+  // ----- Optional shadows (key light only, 1024 quality) -----
   let shadowGenerator: ShadowGenerator | null = null;
   if (enableShadows) {
-    shadowGenerator = new ShadowGenerator(512, key);
+    shadowGenerator = new ShadowGenerator(1024, key);
     shadowGenerator.useBlurExponentialShadowMap = true;
-    shadowGenerator.blurKernel = 12;
-    shadowGenerator.darkness = 0.55;
+    shadowGenerator.blurKernel = 16;
+    shadowGenerator.darkness = 0.50;
+    shadowGenerator.transparencyShadow = true;
   }
 
-  return { ambientLight: ambient, keyLight: key, fillLight: fill, rimLight: rim, shadowGenerator };
+  return {
+    ambientLight: ambient,
+    keyLight: key,
+    fillLight: fill,
+    rimLight: rim,
+    overheadLights,
+    shadowGenerator,
+  };
 }
 
 /**
