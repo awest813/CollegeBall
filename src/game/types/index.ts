@@ -107,6 +107,8 @@ export interface SimPlayer {
   id: string;
   /** Simulation-side team slot, normalized to home/away for deterministic logic. */
   teamId: PossessionTeam;
+  /** Roster role index 0–4 (PG→C); used for offensive slots and man-to-man matchups. */
+  slotIndex: number;
   /** Jersey number from the roster — used for display purposes (e.g. sub messages). */
   jerseyNumber: number;
   position: CourtPosition;
@@ -134,8 +136,12 @@ export interface PlayerGameStats {
   rebounds: number;
   assists: number;
   steals: number;
+  /** Lost-ball / bad-pass turnovers (not steals — defender credited separately). */
+  turnovers: number;
+  /** Blocked field-goal attempts (defensive stat). */
+  blocks: number;
   fouls: number;
-  /** Minutes on the court this game (tracked from game-clock time). */
+  /** Minutes on the court while the game clock is running in IN_PLAY. */
   minutesPlayed: number;
 }
 
@@ -184,6 +190,7 @@ export type SimEventType =
   | "pass"
   | "turnover"
   | "steal"
+  | "block"
   | "rebound"
   | "possession_change"
   | "half_end"

@@ -102,7 +102,7 @@ export default function GameScreen() {
       });
     };
 
-    window.advanceTime = async (ms: number) => {
+    window.advanceTime = (ms: number) => {
       simLoop.advanceByMs(ms);
     };
 
