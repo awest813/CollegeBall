@@ -20,6 +20,7 @@ import type {
   Team,
   GameSettings,
   PlayerGameStats,
+  PlayerPosition,
 } from "../types";
 import {
   BASKET_X_HOME,
@@ -29,6 +30,44 @@ import {
   distance,
   lerpPosition,
 } from "../core/court";
+
+/** Map roster position → floor slot 0–4 (PG…C) for spacing and defensive matchups. */
+const POSITION_SLOT: Record<PlayerPosition, number> = {
+  PG: 0,
+  SG: 1,
+  SF: 2,
+  PF: 3,
+  C: 4,
+};
+
+/**
+ * Stable slot index per starter from lineup order (0 = PG … 4 = C) when positions
+ * are duplicated or missing.
+ */
+function slotIndicesForLineup(team: Team): Map<string, number> {
+  const map = new Map<string, number>();
+  const used = new Set<number>();
+  team.lineup.forEach((id, orderIdx) => {
+    const p = team.roster.find((r) => r.id === id);
+    let slot = p ? POSITION_SLOT[p.position] : orderIdx;
+    if (used.has(slot)) {
+      for (let s = 0; s < 5; s++) {
+        if (!used.has(s)) {
+          slot = s;
+          break;
+        }
+      }
+    }
+    used.add(slot);
+    map.set(id, slot);
+  });
+  return map;
+}
+
+function slotIndexForBenchPlayer(team: Team, playerId: string): number {
+  const p = team.roster.find((r) => r.id === playerId);
+  return p ? POSITION_SLOT[p.position] : 0;
+}
 
 // ---------------------------------------------------------------------------
 // Initialisation
@@ -97,17 +136,22 @@ export function createInitialSimState(
 
   const defaultRatings = { speed: 60, shooting: 60, passing: 60, defense: 60, rebounding: 60, endurance: 60 };
 
+  const homeSlots = slotIndicesForLineup(homeTeam);
+  const awaySlots = slotIndicesForLineup(awayTeam);
+
   // Home team attacks RIGHT basket (away basket at x=43)
   homeTeam.lineup.forEach((id, i) => {
-    const pos = slotToWorld(OFFENSE_SLOTS[i], true);
+    const slotIdx = homeSlots.get(id) ?? i;
+    const pos = slotToWorld(OFFENSE_SLOTS[slotIdx], true);
     const ratings = ratingsMap.get(id) ?? defaultRatings;
     players.push({
       id,
       teamId: "home",
+      slotIndex: slotIdx,
       jerseyNumber: jerseyMap.get(id) ?? 0,
       position: { ...pos },
       targetPosition: { ...pos },
-      hasBall: i === 0, // PG starts with ball
+      hasBall: i === 0, // lineup order: first starter inbounds with the ball
       speedFactor: speedFactorFromRating(ratings.speed),
       ratings,
       fouls: 0,
@@ -123,6 +167,7 @@ export function createInitialSimState(
       bench.push({
         id: p.id,
         teamId: "home",
+        slotIndex: slotIndexForBenchPlayer(homeTeam, p.id),
         jerseyNumber: p.number,
         position: { x: -47, y: 0 },
         targetPosition: { x: -47, y: 0 },
@@ -136,11 +181,13 @@ export function createInitialSimState(
 
   // Away team defends on home's offensive half
   awayTeam.lineup.forEach((id, i) => {
-    const pos = slotToWorld(DEFENSE_SLOTS[i], true);
+    const slotIdx = awaySlots.get(id) ?? i;
+    const pos = slotToWorld(DEFENSE_SLOTS[slotIdx], true);
     const ratings = ratingsMap.get(id) ?? defaultRatings;
     players.push({
       id,
       teamId: "away",
+      slotIndex: slotIdx,
       jerseyNumber: jerseyMap.get(id) ?? 0,
       position: { ...pos },
       targetPosition: { ...pos },
@@ -160,6 +207,7 @@ export function createInitialSimState(
       bench.push({
         id: p.id,
         teamId: "away",
+        slotIndex: slotIndexForBenchPlayer(awayTeam, p.id),
         jerseyNumber: p.number,
         position: { x: 47, y: 0 },
         targetPosition: { x: 47, y: 0 },
@@ -185,6 +233,8 @@ export function createInitialSimState(
       rebounds: 0,
       assists: 0,
       steals: 0,
+      turnovers: 0,
+      blocks: 0,
       fouls: 0,
       minutesPlayed: 0,
     };
@@ -232,6 +282,22 @@ const MAX_SHORT_MIDRANGE_PROBABILITY = 0.65;
 const MIN_SHOT_PROBABILITY = 0.05;
 /** Additional probability penalty per foot beyond the deep-three threshold. */
 const DEEP_THREE_PENALTY_PER_FOOT = 0.01;
+/** Stamina below this value further reduces make probability on jump shots. */
+const STAMINA_SHOT_PENALTY_THRESHOLD = 35;
+/** Max extra miss chance from low stamina at the threshold (at 0 stamina). */
+const MAX_STAMINA_SHOT_PENALTY = 0.12;
+
+// ── Block constants ───────────────────────────────────────────────────────────
+
+/** Defender within this range (ft) of the shooter can block a missed attempt. */
+const BLOCK_CONTEST_RANGE_FT = 5.5;
+/** Base block chance at point-blank for a 100-rated defender (missed FGA only). */
+const BLOCK_BASE_CHANCE = 0.14;
+
+// ── Turnover (bad pass) ───────────────────────────────────────────────────────
+
+/** Max chance per pass check for a mishandle when passing under heavy pressure. */
+const BAD_PASS_MAX_CHANCE = 0.09;
 
 // ── Free throw constants ──────────────────────────────────────────────────────
 
@@ -350,8 +416,8 @@ function assignTargets(
     ? { x: BASKET_X_AWAY, y: 0 }
     : { x: BASKET_X_HOME, y: 0 };
 
-  // Offense: move to positional slots with jitter
-  offPlayers.forEach((p, i) => {
+  // Offense: move to positional slots with jitter (slots follow roster role, not array order)
+  offPlayers.forEach((p) => {
     // Ball handler drives toward the basket area to create a shot opportunity
     if (p.id === ballHandlerId) {
       // Target a position 6–18 ft from the basket, slightly off-centre
@@ -363,7 +429,8 @@ function assignTargets(
       return;
     }
 
-    const slot = OFFENSE_SLOTS[i % OFFENSE_SLOTS.length];
+    const slotIdx = p.slotIndex % OFFENSE_SLOTS.length;
+    const slot = OFFENSE_SLOTS[slotIdx];
     const jitter: CourtPosition = {
       x: slot.x + (Math.random() - 0.5) * 8,
       y: slot.y + (Math.random() - 0.5) * 6,
@@ -373,7 +440,9 @@ function assignTargets(
 
   // Defense: man-to-man — each defender stays between their matchup and the basket
   defPlayers.forEach((def, i) => {
-    const matchup = offPlayers[i % offPlayers.length];
+    const matchup =
+      offPlayers.find((o) => o.slotIndex === def.slotIndex) ??
+      offPlayers[i % offPlayers.length];
     if (!matchup) {
       // Fallback to old slot-based positioning
       const slot = DEFENSE_SLOTS[i % DEFENSE_SLOTS.length];
@@ -410,6 +479,60 @@ function assignWarmupTargets(players: SimPlayer[]): void {
       y: (Math.random() - 0.5) * 20,
     };
   });
+}
+
+/**
+ * After a change of possession, give the ball to a plausible inbound receiver:
+ * prefer better shooters who are already up the floor (closer to the attacking basket).
+ */
+function inboundBallHandler(
+  state: SimulationState,
+  newTeam: PossessionTeam,
+  previousHandlerId?: string | null
+): void {
+  const teammates = state.players.filter((p) => p.teamId === newTeam);
+  if (teammates.length === 0) return;
+
+  const basket: CourtPosition =
+    newTeam === "home"
+      ? { x: BASKET_X_AWAY, y: 0 }
+      : { x: BASKET_X_HOME, y: 0 };
+
+  const candidates = teammates.filter((p) => p.id !== previousHandlerId);
+  const pool = candidates.length > 0 ? candidates : teammates;
+
+  const scored = pool.map((p) => {
+    const dist = distance(p.position, basket);
+    const floorScore =
+      p.ratings.shooting + (1 - Math.min(dist, 35) / 35) * 28;
+    return { player: p, floorScore: floorScore };
+  });
+  scored.sort((a, b) => b.floorScore - a.floorScore);
+
+  const pick =
+    scored.length > 1 && Math.random() < 0.22
+      ? scored[1 + Math.floor(Math.random() * (scored.length - 1))].player
+      : scored[0].player;
+
+  state.players.forEach((p) => {
+    p.hasBall = false;
+  });
+  pick.hasBall = true;
+  state.possession.ballHandlerId = pick.id;
+}
+
+function recordTurnoverForTeam(
+  state: SimulationState,
+  team: PossessionTeam,
+  playerId?: string
+): void {
+  const loserId =
+    playerId ??
+    state.possession.ballHandlerId ??
+    state.players.find((p) => p.teamId === team)?.id;
+  if (loserId && state.playerStats[loserId]) {
+    state.playerStats[loserId].turnovers += 1;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -556,12 +679,7 @@ function tickClocks(ctx: TickContext): void {
         // Swap possession
         const newHalfTeam: PossessionTeam = state.possession.team === "home" ? "away" : "home";
         state.possession.team = newHalfTeam;
-        const newHalfHandler = state.players.find((p) => p.teamId === newHalfTeam);
-        if (newHalfHandler) {
-          state.players.forEach((p) => (p.hasBall = false));
-          newHalfHandler.hasBall = true;
-          state.possession.ballHandlerId = newHalfHandler.id;
-        }
+        inboundBallHandler(state, newHalfTeam, null);
 
         state._timeSinceLastAction = 0;
         state._timeSinceLastTargetAssign = 0;
@@ -588,14 +706,20 @@ function tickClocks(ctx: TickContext): void {
     // was released before the clock expired and will resolve normally.
     if (state.shotClock.remaining <= 0 && !state.shotInFlight) {
       // Shot clock violation — turnover
-      ctx.events.push({ type: "shot_clock_violation", message: "Shot clock violation!" });
+      const lostTeam = state.possession.team;
+      recordTurnoverForTeam(state, lostTeam);
+      ctx.events.push({
+        type: "shot_clock_violation",
+        teamId: lostTeam,
+        message: "Shot clock violation!",
+      });
       changePossession(ctx);
     }
   }
 }
 
 function tickBallHandler(ctx: TickContext): void {
-  const { state, dt } = ctx;
+  const { state, dt, settings } = ctx;
   const handler = state.players.find((p) => p.id === state.possession.ballHandlerId);
   if (!handler) return;
 
@@ -603,6 +727,15 @@ function tickBallHandler(ctx: TickContext): void {
     ? { x: BASKET_X_AWAY, y: 0 }
     : { x: BASKET_X_HOME, y: 0 };
   const distToBasket = distance(handler.position, basket);
+
+  const shotClockPressure =
+    settings.shotClockLength > 0 && state.shotClock.remaining < 14
+      ? 1 + (14 - state.shotClock.remaining) * 0.065
+      : 1;
+  const passPressureBias =
+    state.shotClock.remaining < 11
+      ? 1 + (11 - state.shotClock.remaining) * 0.12
+      : 1;
 
   // ── Non-shooting foul detection ───────────────────────────────────────────
   // A defender who is very close to a driving ball handler may commit a
@@ -641,15 +774,19 @@ function tickBallHandler(ctx: TickContext): void {
   // half-court.  At 0 ft → 2.0×, at 20 ft → 1.0×, at 40 ft → 0.1× (clamped).
   const distFactor = Math.max(0.1, 1 + (20 - distToBasket) / 20);
 
-  const effectiveShotChance = SHOT_CHANCE_PER_SECOND * shootingBias * distFactor * dt;
+  const effectiveShotChance =
+    SHOT_CHANCE_PER_SECOND * shootingBias * distFactor * shotClockPressure * dt;
 
   if (state._timeSinceLastAction > PASS_INTERVAL_MIN && Math.random() < effectiveShotChance) {
     attemptShot(ctx, handler);
     return;
   }
 
-  // Pass: prefer to pass to the most open teammate
-  if (state._timeSinceLastAction > PASS_INTERVAL_MIN && Math.random() < 0.3 * dt) {
+  // Pass: prefer to pass to the most open teammate (more often when the shot clock is low)
+  if (
+    state._timeSinceLastAction > PASS_INTERVAL_MIN &&
+    Math.random() < 0.3 * dt * passPressureBias
+  ) {
     const target = findOpenTeammate(state.players, handler.id, handler.teamId);
     if (target) {
       executePass(ctx, handler, target);
@@ -920,6 +1057,12 @@ function resolveShotInFlight(ctx: TickContext): void {
       makeProb = Math.max(MIN_SHOT_PROBABILITY, makeProb - (shotDist - THREE_POINT_RADIUS - 4) * DEEP_THREE_PENALTY_PER_FOOT);
     }
 
+    // Fatigue hurts jump shots and pull-ups (layups use shotDist < 4 branch above).
+    if (shooter && shotDist >= 4 && shooter.stamina < STAMINA_SHOT_PENALTY_THRESHOLD) {
+      const t = 1 - shooter.stamina / STAMINA_SHOT_PENALTY_THRESHOLD;
+      makeProb *= 1 - t * MAX_STAMINA_SHOT_PENALTY;
+    }
+
     // Track field-goal attempt in stats
     if (shooter && state.playerStats[shooter.id]) {
       state.playerStats[shooter.id].fieldGoalsAttempted += 1;
@@ -1022,10 +1165,38 @@ function resolveShotInFlight(ctx: TickContext): void {
       state.shotClock.remaining = settings.shotClockLength;
     } else {
       state._lastPassFromId = undefined;
+
+      // Block: very tight contests can reject the attempt before the rebound battle.
+      let blocked = false;
+      if (
+        shooter &&
+        nearestDef &&
+        nearestDef.dist < BLOCK_CONTEST_RANGE_FT &&
+        !isFouled
+      ) {
+        const proximity = Math.max(0, 1 - nearestDef.dist / BLOCK_CONTEST_RANGE_FT);
+        const defSkill = nearestDef.player.ratings.defense / 100;
+        const length = nearestDef.player.ratings.rebounding / 100;
+        const blockChance =
+          BLOCK_BASE_CHANCE * defSkill * (0.55 + length * 0.45) * proximity;
+        if (Math.random() < blockChance) {
+          blocked = true;
+          if (state.playerStats[nearestDef.player.id]) {
+            state.playerStats[nearestDef.player.id].blocks += 1;
+          }
+          ctx.events.push({
+            type: "block",
+            playerId: nearestDef.player.id,
+            teamId: nearestDef.player.teamId,
+            message: "Blocked shot!",
+          });
+        }
+      }
+
       ctx.events.push({
         type: "shot_missed",
         teamId: state.possession.team,
-        message: "Shot missed!",
+        message: blocked ? "Shot blocked!" : "Shot missed!",
       });
       // Missed shot → contest the rebound
       resolveRebound(ctx, target);
@@ -1129,12 +1300,14 @@ function executePass(ctx: TickContext, from: SimPlayer, to: SimPlayer): void {
 
       if (Math.random() < stealChance) {
         from.hasBall = false;
-        nearestDef.player.hasBall = true;
+        recordTurnoverForTeam(state, from.teamId, from.id);
         state.possession.team = nearestDef.player.teamId;
-        state.possession.ballHandlerId = nearestDef.player.id;
         state.shotClock.remaining = ctx.settings.shotClockLength;
         state._timeSinceLastAction = 0;
         state._timeSinceLastTargetAssign = 0;
+        state._lastPassFromId = undefined;
+        nearestDef.player.hasBall = true;
+        state.possession.ballHandlerId = nearestDef.player.id;
         assignTargets(state.players, nearestDef.player.teamId, nearestDef.player.id);
 
         if (state.playerStats[nearestDef.player.id]) {
@@ -1156,6 +1329,35 @@ function executePass(ctx: TickContext, from: SimPlayer, to: SimPlayer): void {
     }
   }
 
+  // Mishandled pass under pressure (turnover, no steal credit)
+  if (defenders.length > 0) {
+    const pressure = defenders.reduce((sum, d) => {
+      const laneDist = distance(d.position, laneMid);
+      if (laneDist > 10) return sum;
+      return sum + Math.max(0, 1 - laneDist / 10) * (d.ratings.defense / 100);
+    }, 0);
+    const passSkill = from.ratings.passing / 100;
+    const badPassChance = Math.min(
+      BAD_PASS_MAX_CHANCE,
+      pressure * 0.045 * (1 - passSkill * 0.55)
+    );
+    if (Math.random() < badPassChance) {
+      from.hasBall = false;
+      recordTurnoverForTeam(state, from.teamId, from.id);
+      state._lastPassFromId = undefined;
+      state._timeSinceLastAction = 0;
+      state._timeSinceLastTargetAssign = 0;
+      changePossession(ctx);
+      ctx.events.push({
+        type: "turnover",
+        playerId: from.id,
+        teamId: from.teamId,
+        message: "Turnover (bad pass)",
+      });
+      return;
+    }
+  }
+
   // No steal: complete the pass
   from.hasBall = false;
   to.hasBall = true;
@@ -1173,6 +1375,7 @@ function executePass(ctx: TickContext, from: SimPlayer, to: SimPlayer): void {
 
 function changePossession(ctx: TickContext): void {
   const { state, settings } = ctx;
+  const prevHandler = state.possession.ballHandlerId;
   const newTeam: PossessionTeam = state.possession.team === "home" ? "away" : "home";
   state.possession.team = newTeam;
   state.shotClock.remaining = settings.shotClockLength;
@@ -1181,13 +1384,7 @@ function changePossession(ctx: TickContext): void {
   // A possession change clears any pending assist
   state._lastPassFromId = undefined;
 
-  // Hand ball to the first player of the new team
-  const newHandler = state.players.find((p) => p.teamId === newTeam);
-  if (newHandler) {
-    state.players.forEach((p) => (p.hasBall = false));
-    newHandler.hasBall = true;
-    state.possession.ballHandlerId = newHandler.id;
-  }
+  inboundBallHandler(state, newTeam, prevHandler);
 
   // Reassign targets for the new possession
   assignTargets(state.players, newTeam, state.possession.ballHandlerId);
@@ -1210,8 +1407,12 @@ function tickMovement(ctx: TickContext): void {
     const drain = (distMoved * STAMINA_DRAIN_PER_FOOT + STAMINA_PASSIVE_DRAIN_PER_SEC * dt) / enduranceFactor;
     p.stamina = Math.max(STAMINA_FLOOR, p.stamina - drain);
 
-    // Track minutes played (convert game-clock seconds → minutes)
-    if (state.playerStats[p.id]) {
+    // Minutes = game-clock time while the ball is live (not dead-ball / intermission)
+    if (
+      state.phase === "IN_PLAY" &&
+      state.gameClock.running &&
+      state.playerStats[p.id]
+    ) {
       state.playerStats[p.id].minutesPlayed += dt / 60;
     }
   }
@@ -1250,6 +1451,7 @@ function tickSubstitutions(ctx: TickContext): void {
     // Place sub at the tired player's current position so the transition is seamless
     sub.position = { ...tired.position };
     sub.targetPosition = { ...tired.targetPosition };
+    sub.slotIndex = tired.slotIndex;
     sub.hasBall = tired.hasBall;
     if (tired.hasBall) {
       state.possession.ballHandlerId = sub.id;

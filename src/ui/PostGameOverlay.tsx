@@ -232,6 +232,8 @@ function BoxScore({ team, playerStats, primaryColor }: BoxScoreProps) {
             <th className={HDR}>REB</th>
             <th className={HDR}>AST</th>
             <th className={HDR}>STL</th>
+            <th className={HDR}>BLK</th>
+            <th className={HDR}>TO</th>
             <th className={HDR}>PF</th>
           </tr>
         </thead>
@@ -240,7 +242,8 @@ function BoxScore({ team, playerStats, primaryColor }: BoxScoreProps) {
             const s: PlayerGameStats = playerStats[p.id] ?? {
               points: 0, fieldGoalsMade: 0, fieldGoalsAttempted: 0,
               threesMade: 0, threesAttempted: 0, freeThrowsMade: 0,
-              freeThrowsAttempted: 0, rebounds: 0, assists: 0, steals: 0, fouls: 0, minutesPlayed: 0,
+              freeThrowsAttempted: 0, rebounds: 0, assists: 0, steals: 0,
+              turnovers: 0, blocks: 0, fouls: 0, minutesPlayed: 0,
             };
             const isBench = !lineupIds.has(p.id);
             return (
@@ -261,6 +264,8 @@ function BoxScore({ team, playerStats, primaryColor }: BoxScoreProps) {
                 <td className={`${COL} text-gray-300`}>{s.rebounds}</td>
                 <td className={`${COL} text-gray-300`}>{s.assists}</td>
                 <td className={`${COL} text-gray-300`}>{s.steals}</td>
+                <td className={`${COL} text-gray-300`}>{s.blocks}</td>
+                <td className={`${COL} text-gray-300`}>{s.turnovers}</td>
                 <td className={`${COL} ${s.fouls >= 5 ? "text-red-400" : "text-gray-300"}`}>{s.fouls}</td>
               </tr>
             );

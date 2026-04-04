@@ -4,7 +4,7 @@ import {
   tick,
   resetSimEngine,
 } from "./engine";
-import type { GameSettings, Team, Lineup } from "../types";
+import type { GameSettings, Team, Lineup, PlayerPosition } from "../types";
 
 const tinySettings: GameSettings = {
   halfLength: 3,
@@ -17,14 +17,15 @@ const tinySettings: GameSettings = {
 function makeTeam(
   id: string,
   name: string,
-  lineupIds: string[]
+  lineupIds: string[],
+  positions?: PlayerPosition[]
 ): Team {
   const roster = lineupIds.map((pid, i) => ({
     id: pid,
     firstName: "Test",
     lastName: `Player${i}`,
     number: i + 1,
-    position: "PG" as const,
+    position: positions?.[i] ?? "PG",
     ratings: {
       speed: 60,
       shooting: 60,
@@ -68,6 +69,18 @@ describe("createInitialSimState", () => {
     expect(s.shotClock.running).toBe(false);
     expect(s.phase).toBe("PRE_GAME");
     expect(Object.keys(s.playerStats)).toHaveLength(10);
+  });
+
+  it("assigns floor slot indices from roster positions for spacing and matchups", () => {
+    const positions: PlayerPosition[] = ["PG", "SG", "SF", "PF", "C"];
+    const ids = ["h1", "h2", "h3", "h4", "h5"];
+    const home = makeTeam("home", "Home", ids, positions);
+    const away = makeTeam("away", "Away", ["a1", "a2", "a3", "a4", "a5"], positions);
+
+    const s = createInitialSimState(home, away, tinySettings);
+    for (let i = 0; i < 5; i++) {
+      expect(s.players.find((p) => p.id === ids[i])?.slotIndex).toBe(i);
+    }
   });
 });
 

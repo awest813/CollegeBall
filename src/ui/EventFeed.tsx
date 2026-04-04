@@ -54,6 +54,7 @@ function toFeedEntry(event: SimEvent, homeTeam: Team, awayTeam: Team): FeedEntry
     case "shot_missed":
     case "free_throw_missed":
     case "rebound":
+    case "block":
       return { id: nextEntryId++, message: `${prefix}${event.message}`, kind: "miss" };
     case "steal":
     case "turnover":
