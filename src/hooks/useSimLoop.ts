@@ -8,13 +8,18 @@
  * wire it into the Babylon scene's onRender callback.
  */
 
-import { useRef, useCallback, useEffect } from "react";
+import { useRef, useCallback, useEffect, useMemo } from "react";
 import { useGameStore } from "../store/gameStore";
 import {
   tick,
   createInitialSimState,
   resetSimEngine,
 } from "../game/sim/engine";
+import {
+  FIXED_DT,
+  MAX_STEPS_PER_FRAME,
+  boundedSimDeltaSeconds,
+} from "../game/sim/fixedTimestep";
 import type { SimulationState } from "../game/types";
 
 export interface SimLoopController {
@@ -25,9 +30,6 @@ export interface SimLoopController {
   /** Advance the sim deterministically without waiting for real time. */
   advanceByMs: (dtMs: number) => void;
 }
-
-// Fixed timestep for deterministic simulation (60 Hz)
-const FIXED_DT = 1 / 60;
 
 export function useSimLoop(): SimLoopController {
   const stateRef = useRef<SimulationState | null>(null);
@@ -81,13 +83,15 @@ export function useSimLoop(): SimLoopController {
       }
 
       manualControlRef.current = true;
-      accumulatorRef.current += (dtMs / 1000) * gameSpeed;
+      accumulatorRef.current += boundedSimDeltaSeconds(dtMs, gameSpeed);
 
       let ticked = false;
-      while (accumulatorRef.current >= FIXED_DT) {
+      let steps = 0;
+      while (accumulatorRef.current >= FIXED_DT && steps < MAX_STEPS_PER_FRAME) {
         stateRef.current = tick(stateRef.current, FIXED_DT, settings);
         accumulatorRef.current -= FIXED_DT;
         ticked = true;
+        steps += 1;
 
         if (stateRef.current.phase === "FINISHED") {
           useGameStore.getState().setSimStatus("finished");
@@ -114,15 +118,16 @@ export function useSimLoop(): SimLoopController {
         initializeState();
       }
 
-      const dtScaled = (dtMs / 1000) * gameSpeed;
-      accumulatorRef.current += dtScaled;
+      accumulatorRef.current += boundedSimDeltaSeconds(dtMs, gameSpeed);
 
       // Consume accumulated time in fixed steps
       let ticked = false;
-      while (accumulatorRef.current >= FIXED_DT) {
+      let steps = 0;
+      while (accumulatorRef.current >= FIXED_DT && steps < MAX_STEPS_PER_FRAME) {
         stateRef.current = tick(stateRef.current, FIXED_DT, settings);
         accumulatorRef.current -= FIXED_DT;
         ticked = true;
+        steps += 1;
 
         // Check for game end
         if (stateRef.current.phase === "FINISHED") {
@@ -140,5 +145,8 @@ export function useSimLoop(): SimLoopController {
 
   const getState = useCallback(() => stateRef.current, []);
 
-  return { onFrame, getState, advanceByMs };
+  return useMemo(
+    () => ({ onFrame, getState, advanceByMs }),
+    [onFrame, getState, advanceByMs]
+  );
 }

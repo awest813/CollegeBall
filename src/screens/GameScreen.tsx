@@ -102,7 +102,7 @@ export default function GameScreen() {
       });
     };
 
-    window.advanceTime = async (ms: number) => {
+    window.advanceTime = (ms: number) => {
       simLoop.advanceByMs(ms);
     };
 
@@ -148,7 +148,8 @@ export default function GameScreen() {
 
   const onRender = useCallback(
     (scene: Scene) => {
-      const dtMs = scene.getEngine().getDeltaTime();
+      // Cap delta so a tab wake / hitch does not spike animation smoothing or controls.
+      const dtMs = Math.min(scene.getEngine().getDeltaTime(), 100);
       const dtSec = dtMs / 1000;
 
       simLoop.onFrame(dtMs);
