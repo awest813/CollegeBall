@@ -47,17 +47,17 @@ import { BroadcastCamera } from "./BroadcastCamera";
 const MIN_DELTA_TIME = 0.0001;
 
 /**
- * Per-frame lerp factor for player world position.
- * Smooths visual movement so players glide rather than snap to each sim update.
- * Matches the ball's smoothing factor so both feel equally fluid.
+ * Visual smoothing time constants (seconds to close ~63% of the gap).
+ * Framerate-independent: applied via exponential decay each frame.
  */
-const PLAYER_POS_LERP = 0.35;
+const PLAYER_POS_SMOOTHING_SEC = 0.12;
+const BALL_POS_SMOOTHING_SEC = 0.12;
 
 /**
- * Per-frame lerp factor for player facing angle.
- * Slower than position so turns look deliberate rather than instantaneous.
+ * Per-frame lerp factor for player facing angle at 60 FPS reference.
+ * Scaled by frame dt so turn rate stays consistent across refresh rates.
  */
-const PLAYER_ANGLE_LERP = 0.18;
+const PLAYER_ANGLE_LERP_PER_SEC = 10.8; // ≈ 0.18 per frame at 60 Hz
 
 /** How long each event-driven animation override lasts before expiring. */
 const OVERRIDE_DURATIONS: Partial<Record<AnimationStateName, number>> = {
@@ -66,11 +66,7 @@ const OVERRIDE_DURATIONS: Partial<Record<AnimationStateName, number>> = {
   celebrate: 1.50,
 };
 
-/**
- * The shipped prototype currently relies on primitive player silhouettes.
- * Keep GLB upgrades disabled until a production asset is published under
- * `public/assets/models/players/` so gameplay tests stay free of 404 noise.
- */
+/** Load shared player GLB from `/assets/models/players/` when present; primitives stay as fallback. */
 const ENABLE_PLAYER_MODEL_UPGRADES = true;
 
 export class RenderBridge {
@@ -84,6 +80,10 @@ export class RenderBridge {
   private ballGlbRoot:      AbstractMesh | null = null;
   private broadcastCamera: BroadcastCamera | null = null;
   private initialized = false;
+
+  /** Tracks shot flight across frames so we can start follow-through when the ball lands. */
+  private prevShotInFlight = false;
+  private lastShooterIdWhileInFlight: string | undefined;
 
   /**
    * Per-player animation overrides injected by sim events.
@@ -135,6 +135,9 @@ export class RenderBridge {
     // Create broadcast camera (owns the camera for this scene)
     this.broadcastCamera = new BroadcastCamera(this.scene);
 
+    this.prevShotInFlight = state.shotInFlight;
+    this.lastShooterIdWhileInFlight = state._shooterId;
+
     this.initialized = true;
     this.sync(state, 0);
   }
@@ -148,6 +151,22 @@ export class RenderBridge {
    */
   sync(state: SimulationState, dt: number): void {
     if (!this.initialized) return;
+
+    const dtSafe = Math.max(0, Math.min(dt, 0.1));
+
+    // ------------------------------------------------------------------
+    // 0. Shot landed this tick — brief follow-through for the shooter (sync with sim clearing _shooterId)
+    // ------------------------------------------------------------------
+    if (this.prevShotInFlight && !state.shotInFlight && this.lastShooterIdWhileInFlight) {
+      this.animOverrides.set(this.lastShooterIdWhileInFlight, {
+        name:          "shoot",
+        remainingTime: 0.45,
+      });
+    }
+    if (state.shotInFlight && state._shooterId) {
+      this.lastShooterIdWhileInFlight = state._shooterId;
+    }
+    this.prevShotInFlight = state.shotInFlight;
 
     // ------------------------------------------------------------------
     // 1. Process simulation events → animation overrides
@@ -194,7 +213,7 @@ export class RenderBridge {
     // 2. Tick down override timers; remove expired entries
     // ------------------------------------------------------------------
     for (const [playerId, override] of this.animOverrides) {
-      override.remainingTime -= dt;
+      override.remainingTime -= dtSafe;
       if (override.remainingTime <= 0) {
         this.animOverrides.delete(playerId);
       }
@@ -220,14 +239,16 @@ export class RenderBridge {
       if (Math.abs(dx) > 0.02 || Math.abs(dz) > 0.02) {
         const targetAngle  = Math.atan2(dz, dx);
         const currentAngle = this.facingAngles.get(sp.id) ?? targetAngle;
-        this.facingAngles.set(sp.id, lerpAngle(currentAngle, targetAngle, PLAYER_ANGLE_LERP));
+        const angleT = 1 - Math.exp(-PLAYER_ANGLE_LERP_PER_SEC * dtSafe);
+        this.facingAngles.set(sp.id, lerpAngle(currentAngle, targetAngle, angleT));
       }
       this.prevPositions.set(sp.id, { x: worldX, z: worldZ });
 
-      // Lerp rendered position toward sim position (same approach as ball)
+      // Exponential smoothing toward sim position (framerate-independent)
       const smooth = this.smoothedPositions.get(sp.id) ?? { x: worldX, z: worldZ };
-      const smoothX = smooth.x + (worldX - smooth.x) * PLAYER_POS_LERP;
-      const smoothZ = smooth.z + (worldZ - smooth.z) * PLAYER_POS_LERP;
+      const posT = 1 - Math.exp(-dtSafe / PLAYER_POS_SMOOTHING_SEC);
+      const smoothX = smooth.x + (worldX - smooth.x) * posT;
+      const smoothZ = smooth.z + (worldZ - smooth.z) * posT;
       this.smoothedPositions.set(sp.id, { x: smoothX, z: smoothZ });
 
       // Determine desired animation state —
@@ -279,7 +300,8 @@ export class RenderBridge {
         state.ballHeight,
         state.ballPosition.y
       );
-      this.ballMesh.position = Vector3.Lerp(this.ballMesh.position, bTarget, 0.35);
+      const ballT = 1 - Math.exp(-dtSafe / BALL_POS_SMOOTHING_SEC);
+      this.ballMesh.position = Vector3.Lerp(this.ballMesh.position, bTarget, ballT);
 
       // Keep the GLB ball in sync with the sphere position once loaded.
       if (this.ballGlbRoot) {
@@ -354,6 +376,8 @@ export class RenderBridge {
     this.prevPositions.clear();
     this.smoothedPositions.clear();
     this.animOverrides.clear();
+    this.prevShotInFlight = false;
+    this.lastShooterIdWhileInFlight = undefined;
 
     this.ballMesh?.dispose();
     this.ballMesh = null;
