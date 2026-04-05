@@ -26,7 +26,7 @@ export default function GameMenuOverlay() {
   }
 
   return (
-    <div className="absolute inset-0 z-30 flex items-center justify-center bg-slate-950/76 px-4 py-6 backdrop-blur-md sm:px-6 sm:py-8">
+    <div className="absolute inset-0 z-30 flex items-center justify-center bg-slate-950/76 px-4 py-[max(1.25rem,env(safe-area-inset-top,0px))] pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] backdrop-blur-md sm:px-6 sm:py-8">
       <div className="polish-rise grid w-full max-w-5xl gap-0 overflow-hidden rounded-[36px] border border-white/10 bg-[#08111d]/96 shadow-[0_40px_120px_rgba(0,0,0,0.45)] lg:grid-cols-[1.2fr_0.8fr]">
         <section className="relative overflow-hidden px-6 py-7 sm:px-8 sm:py-8">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.22),transparent_38%),radial-gradient(circle_at_bottom_right,rgba(251,191,36,0.18),transparent_32%)]" />
@@ -91,7 +91,10 @@ export default function GameMenuOverlay() {
               <div className="mt-3 grid gap-3 sm:grid-cols-3">
                 <StatusTile label="Camera" value={cameraMode} />
                 <StatusTile label="Speed" value={`${gameSpeed}x`} />
-                <StatusTile label="Shortcut" value="Esc menu | F fullscreen" />
+                <StatusTile
+                  label="Controls"
+                  value="Tap Game Menu to pause · Fullscreen on supported devices"
+                />
               </div>
             </div>
           </div>

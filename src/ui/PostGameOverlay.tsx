@@ -33,7 +33,7 @@ export default function PostGameOverlay() {
 
   return (
     <div
-      className="absolute inset-0 z-30 flex flex-col items-center justify-center select-none overflow-y-auto py-6"
+      className="absolute inset-0 z-30 flex flex-col items-center justify-center select-none overflow-y-auto py-[max(1.5rem,env(safe-area-inset-top,0px))] pb-[max(1.5rem,env(safe-area-inset-bottom,0px))]"
       style={{ background: "rgba(4,4,10,0.92)", backdropFilter: "blur(6px)" }}
     >
       {/* Result header */}
@@ -103,17 +103,16 @@ export default function PostGameOverlay() {
       </div>
 
       {/* Action buttons */}
-      <div className="flex gap-4">
+      <div className="flex flex-wrap justify-center gap-3 px-4">
         <button
           onClick={startExhibition}
-          className="bg-yellow-400 hover:bg-yellow-300 active:scale-95 text-black font-bold px-8 py-3 rounded-xl shadow-lg transition-all text-sm tracking-wide"
+          className="min-h-[44px] rounded-xl bg-yellow-400 px-8 py-3 text-sm font-bold tracking-wide text-black shadow-lg transition-all hover:bg-yellow-300 active:scale-95"
         >
           Play Again
         </button>
         <button
           onClick={returnToMainMenu}
-          className="bg-white/10 hover:bg-white/20 active:scale-95 text-white font-semibold px-8 py-3 rounded-xl transition-all text-sm tracking-wide"
-          style={{ border: "1px solid rgba(255,255,255,0.15)" }}
+          className="min-h-[44px] rounded-xl border border-white/15 bg-white/10 px-8 py-3 text-sm font-semibold text-white transition-all hover:bg-white/20 active:scale-95"
         >
           Main Menu
         </button>

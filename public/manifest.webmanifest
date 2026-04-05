@@ -1,0 +1,19 @@
+{
+  "name": "CollegeBall Mobile",
+  "short_name": "CollegeBall",
+  "description": "3D college basketball sim — built for phones and tablets. Watch the game, control pace and cameras, track the scorebug.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#040a12",
+  "theme_color": "#07111b",
+  "categories": ["games", "sports"],
+  "icons": [
+    {
+      "src": "/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

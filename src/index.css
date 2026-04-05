@@ -13,7 +13,10 @@ html,
 body,
 #root {
   min-height: 100%;
+  min-height: 100dvh;
 }
+
+/* Full-bleed game canvas: keep safe-area padding on HUD components only */
 
 body {
   margin: 0;

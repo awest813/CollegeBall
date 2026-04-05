@@ -29,15 +29,15 @@ const MODE_CARDS = [
 ];
 
 const BUILD_NOTES = [
-  "Broadcast camera and tempo controls are live in-game.",
-  "Postgame box score and phase overlays are wired into the sim.",
-  "Menu flow now supports a full pause menu instead of a raw HUD only state.",
+  "Manifest + standalone display: add to home screen for an app-like shell.",
+  "In-game HUD uses safe-area insets and 44px minimum touch targets.",
+  "Desktop shortcuts still work; on phones, use the on-screen Game Menu.",
 ];
 
 const SUPPORT_RIBBON = [
-  "Broadcast camera deck",
-  "Live pace control",
-  "Bench-style pause menu",
+  "Touch-friendly HUD",
+  "Add to Home Screen (PWA)",
+  "3D court on your phone",
 ];
 
 export default function MainMenu() {
@@ -49,29 +49,29 @@ export default function MainMenu() {
   const awayProfile = getTeamProfile(awayTeam);
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#07111b] text-white">
+    <div className="relative min-h-[100dvh] overflow-x-hidden overflow-y-auto bg-[#07111b] pb-[max(1rem,env(safe-area-inset-bottom,0px))] text-white">
       <BackgroundLayers />
 
       <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-[1560px] flex-col px-5 py-5 sm:px-8 sm:py-7 lg:px-10 xl:px-12">
         <header className="polish-rise flex flex-col gap-4 pb-4 lg:flex-row lg:items-end lg:justify-between lg:pb-5">
           <div>
             <div className="text-[11px] font-semibold uppercase tracking-[0.45em] text-cyan-200/70">
-              CollegeBall
+              CollegeBall Mobile
             </div>
             <h1 className="mt-3 max-w-3xl text-5xl font-black uppercase leading-[0.88] tracking-[0.04em] text-white sm:text-6xl xl:text-[5.25rem]">
-              Saturday Night
+              Pocket
               <br />
-              Bench Control
+              Hardwood
             </h1>
           </div>
 
           <div className="max-w-md lg:pb-2">
             <p className="text-sm uppercase tracking-[0.32em] text-white/42">
-              Sim-first college basketball prototype
+              Mobile basketball game · sim-driven 3D action
             </p>
             <p className="mt-3 text-sm leading-6 text-white/70">
-              Cleaned for a front-end feel: stronger hierarchy, wider spacing,
-              and a calmer menu rhythm around the matchup and game controls.
+              Install as an app from your browser, play in portrait or landscape,
+              and run the full college sim with a touch-first control deck.
             </p>
           </div>
         </header>
@@ -97,9 +97,9 @@ export default function MainMenu() {
                     own the sideline.
                   </h2>
                   <p className="mt-5 max-w-xl text-base leading-7 text-white/70 sm:text-lg">
-                    Drop into a full exhibition with broadcast presentation,
-                    fast control of tempo, and a cleaner bench-command flow once
-                    the game is underway.
+                    One tap starts a full exhibition: 3D court, live scorebug,
+                    cameras and sim speed on a panel sized for thumbs—not a
+                    desktop-only layout squeezed onto glass.
                   </p>
                 </div>
 
@@ -183,7 +183,7 @@ export default function MainMenu() {
             <div className="grid gap-3 sm:grid-cols-3">
               <StatPanel label="Home overall" value={homeProfile.overall} />
               <StatPanel label="Away overall" value={awayProfile.overall} />
-              <StatPanel label="Control note" value="Esc menu | F full" />
+              <StatPanel label="On device" value="PWA · safe areas · 44px taps" />
             </div>
           </section>
         </main>

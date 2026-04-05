@@ -76,7 +76,7 @@ export default function Scoreboard() {
   const awayBonusLabel = bonusLabel(teamFouls.home);
 
   return (
-    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 select-none px-4">
+    <div className="absolute left-1/2 top-[max(0.75rem,env(safe-area-inset-top,0px))] z-20 -translate-x-1/2 select-none px-3 sm:px-4">
       <div
         className="flex items-stretch overflow-hidden rounded-2xl shadow-2xl backdrop-blur-md"
         style={{ border: "1px solid rgba(255,255,255,0.13)", boxShadow: "0 8px 32px rgba(0,0,0,0.55)" }}

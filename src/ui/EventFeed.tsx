@@ -113,7 +113,7 @@ export default function EventFeed() {
   if (entries.length === 0) return null;
 
   return (
-    <div className="absolute right-4 top-[88px] z-20 flex select-none flex-col items-end gap-1.5">
+    <div className="absolute right-[max(0.75rem,env(safe-area-inset-right,0px))] top-[max(5.5rem,calc(env(safe-area-inset-top,0px)+4.5rem))] z-20 flex select-none flex-col items-end gap-1.5">
       {entries.map((entry, index) => {
         const styles  = KIND_STYLES[entry.kind];
         const icon    = KIND_ICON[entry.kind];
