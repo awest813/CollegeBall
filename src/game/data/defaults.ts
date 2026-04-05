@@ -18,6 +18,35 @@ import type {
 let _nextId = 1;
 const uid = (): string => `player_${_nextId++}`;
 
+/** Return a random integer in [min, max]. */
+function rand(min: number, max: number): number {
+  return min + Math.floor(Math.random() * (max - min + 1));
+}
+
+/**
+ * Per-position rating ranges (min, max) for each skill dimension.
+ * Guards are faster with better passing; bigs have more rebounding and defense.
+ */
+const RATING_RANGES: Record<PlayerPosition, Record<keyof import("../types").PlayerRatings, [number, number]>> = {
+  PG: { speed: [65, 92], shooting: [55, 85], passing: [68, 90], defense: [50, 78], rebounding: [35, 62], endurance: [60, 90] },
+  SG: { speed: [60, 88], shooting: [62, 92], passing: [52, 80], defense: [50, 80], rebounding: [38, 66], endurance: [55, 85] },
+  SF: { speed: [56, 85], shooting: [58, 88], passing: [50, 78], defense: [55, 83], rebounding: [48, 76], endurance: [52, 82] },
+  PF: { speed: [44, 74], shooting: [44, 76], passing: [36, 66], defense: [60, 88], rebounding: [65, 90], endurance: [48, 78] },
+  C:  { speed: [35, 65], shooting: [38, 72], passing: [32, 62], defense: [62, 90], rebounding: [70, 92], endurance: [45, 75] },
+};
+
+function makeRatings(pos: PlayerPosition): import("../types").PlayerRatings {
+  const r = RATING_RANGES[pos];
+  return {
+    speed:      rand(...r.speed),
+    shooting:   rand(...r.shooting),
+    passing:    rand(...r.passing),
+    defense:    rand(...r.defense),
+    rebounding: rand(...r.rebounding),
+    endurance:  rand(...r.endurance),
+  };
+}
+
 function makePlayers(
   _teamId: string,
   names: [string, string, PlayerPosition, number][]
@@ -28,14 +57,7 @@ function makePlayers(
     lastName: last,
     number: num,
     position: pos,
-    ratings: {
-      speed: 50 + Math.floor(Math.random() * 30),
-      shooting: 50 + Math.floor(Math.random() * 30),
-      passing: 50 + Math.floor(Math.random() * 30),
-      defense: 50 + Math.floor(Math.random() * 30),
-      rebounding: 50 + Math.floor(Math.random() * 30),
-      endurance: 50 + Math.floor(Math.random() * 30),
-    },
+    ratings: makeRatings(pos),
   }));
 }
 
@@ -95,4 +117,5 @@ export const defaultGameSettings: GameSettings = {
   bonusFoulThreshold: 7, // one-and-one starts at 7 team fouls
   doubleBonusThreshold: 10, // double bonus at 10 team fouls
   subStaminaThreshold: 25, // sub out players below 25% stamina
+  homeCourtBonus: true, // home team receives a small shooting/FT advantage
 };

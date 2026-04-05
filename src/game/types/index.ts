@@ -145,7 +145,7 @@ export interface PlayerGameStats {
   minutesPlayed: number;
 }
 
-export type MatchPhase = "PRE_GAME" | "TIP_OFF" | "IN_PLAY" | "HALFTIME" | "FULL_TIME" | "FINISHED";
+export type MatchPhase = "PRE_GAME" | "TIP_OFF" | "IN_PLAY" | "HALFTIME" | "OVERTIME" | "FULL_TIME" | "FINISHED";
 
 /** THE full snapshot produced by the simulation every tick. */
 export interface SimulationState {
@@ -166,6 +166,8 @@ export interface SimulationState {
   playerStats: Record<string, PlayerGameStats>;
   /** True while a shot is in the air. */
   shotInFlight: boolean;
+  /** Current overtime period (0 = regulation, 1 = first OT, 2 = second OT, …). */
+  overtimePeriod: number;
   /** Internal: target basket position for an in-flight shot. */
   _shotTarget?: CourtPosition;
   /** Internal: remaining flight time for a shot. */
@@ -180,6 +182,10 @@ export interface SimulationState {
   _timeSinceLastAction: number;
   /** Internal: accumulated time since last movement target reassignment. */
   _timeSinceLastTargetAssign: number;
+  /** Internal: true when the ball handler has a fast-break advantage after a steal or quick transition. */
+  _isFastBreak?: boolean;
+  /** Internal: per-player consecutive-makes counter for the hot-hand effect. */
+  _hotStreak?: Record<string, number>;
   /** Event log for the current tick (e.g. "shot_made", "turnover"). */
   events: SimEvent[];
 }
@@ -200,7 +206,9 @@ export type SimEventType =
   | "non_shooting_foul"
   | "substitution"
   | "free_throw_made"
-  | "free_throw_missed";
+  | "free_throw_missed"
+  | "fast_break"
+  | "overtime_start";
 
 export interface SimEvent {
   type: SimEventType;
@@ -229,6 +237,11 @@ export interface GameSettings {
   doubleBonusThreshold: number;
   /** Stamina below this value triggers an automatic substitution (0–100). */
   subStaminaThreshold: number;
+  /**
+   * When true, the home team receives a small boost to shot percentage and free-throw
+   * percentage to simulate home-court crowd energy and familiarity.
+   */
+  homeCourtBonus: boolean;
 }
 
 // ---------------------------------------------------------------------------

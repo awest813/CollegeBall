@@ -25,6 +25,7 @@ function phaseBadgeLabel(phase: string): string | null {
     case "PRE_GAME": return "Warmup";
     case "TIP_OFF":  return "Tip Off";
     case "HALFTIME": return "Halftime";
+    case "OVERTIME": return "Overtime";
     default:         return null;
   }
 }
@@ -40,6 +41,7 @@ export default function Scoreboard() {
   const teamFouls  = useGameStore((s) => s.teamFouls);
   const settings   = useGameStore((s) => s.settings);
   const phase      = useGameStore((s) => s.phase);
+  const overtimePeriod = useGameStore((s) => s.overtimePeriod);
 
   const isFinished   = simStatus === "finished";
   const shotClockUrgent = !isFinished && shotClock.remaining <= 5 && shotClock.running;
@@ -105,7 +107,12 @@ export default function Scoreboard() {
 
           {/* Half label */}
           <span className="text-gray-400 text-[10px] font-semibold tracking-widest uppercase mt-0.5">
-            {isFinished ? "Final" : gameClock.half === 1 ? "1st Half" : "2nd Half"}
+            {isFinished
+              ? "Final"
+              : overtimePeriod > 0
+                ? overtimePeriod === 1 ? "Overtime" : `OT${overtimePeriod}`
+                : gameClock.half === 1 ? "1st Half" : "2nd Half"
+            }
           </span>
 
           {phaseBadge && (
