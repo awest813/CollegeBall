@@ -165,7 +165,7 @@ export default function GameScreen() {
   return (
     <div
       ref={containerRef}
-      className="relative h-screen w-screen overflow-hidden bg-black"
+      className="relative h-[100dvh] min-h-[100dvh] w-full max-w-[100vw] overflow-hidden bg-black"
     >
       <BabylonCanvas
         onSceneReady={onSceneReady}

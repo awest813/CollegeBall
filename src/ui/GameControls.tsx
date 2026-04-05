@@ -34,12 +34,12 @@ export default function GameControls() {
   };
 
   return (
-    <div className="absolute inset-x-0 bottom-0 z-20 select-none px-4 pb-4 sm:px-6 sm:pb-5">
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-3 rounded-[28px] border border-white/10 bg-slate-950/68 px-4 py-3 shadow-2xl backdrop-blur-xl sm:px-5">
+    <div className="absolute inset-x-0 bottom-0 z-20 select-none px-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] pt-2 sm:px-6 sm:pb-5">
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-3 rounded-[24px] border border-white/10 bg-slate-950/68 px-3 py-3 shadow-2xl backdrop-blur-xl sm:rounded-[28px] sm:px-5">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.35em] text-white/45">
             <span className="rounded-full border border-white/10 px-2 py-1 text-[9px] text-white/55">
-              Bench Command
+              Touch Deck
             </span>
             <span>{isPauseMenuOpen ? "Menu Open" : "Live Control"}</span>
           </div>
@@ -48,7 +48,7 @@ export default function GameControls() {
             <button
               onClick={togglePause}
               disabled={!isPlayable || isPauseMenuOpen}
-              className="rounded-full border border-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:border-white/25 hover:bg-white/8 disabled:cursor-not-allowed disabled:opacity-35"
+              className="min-h-[44px] min-w-[44px] rounded-full border border-white/10 px-4 py-2.5 text-sm font-semibold text-white transition active:scale-[0.98] hover:border-white/25 hover:bg-white/8 disabled:cursor-not-allowed disabled:opacity-35"
               title={simStatus === "running" ? "Pause simulation" : "Resume simulation"}
             >
               {simStatus === "running" ? "Pause" : "Resume"}
@@ -57,7 +57,7 @@ export default function GameControls() {
             <button
               onClick={() => void window.toggleCollegeBallFullscreen?.()}
               disabled={!isPlayable || isFinished}
-              className="rounded-full border border-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:border-white/25 hover:bg-white/8 disabled:cursor-not-allowed disabled:opacity-35"
+              className="min-h-[44px] min-w-[44px] rounded-full border border-white/10 px-4 py-2.5 text-sm font-semibold text-white transition active:scale-[0.98] hover:border-white/25 hover:bg-white/8 disabled:cursor-not-allowed disabled:opacity-35"
               title="Toggle fullscreen"
             >
               Fullscreen
@@ -66,7 +66,7 @@ export default function GameControls() {
             <button
               onClick={openPauseMenu}
               disabled={!isPlayable || isFinished}
-              className="rounded-full bg-amber-300 px-4 py-2 text-sm font-black uppercase tracking-[0.18em] text-slate-950 transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-35"
+              className="min-h-[44px] rounded-full bg-amber-300 px-5 py-2.5 text-sm font-black uppercase tracking-[0.18em] text-slate-950 transition active:scale-[0.98] hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-35"
             >
               Game Menu
             </button>
@@ -84,7 +84,7 @@ export default function GameControls() {
                   key={mode}
                   onClick={() => setCameraMode(mode)}
                   title={title}
-                  className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                  className={`min-h-[44px] rounded-full px-4 py-2.5 text-sm font-semibold transition active:scale-[0.98] ${
                     cameraMode === mode
                       ? "bg-white text-slate-950 shadow-lg"
                       : "border border-white/10 bg-slate-950/55 text-white/65 hover:border-white/20 hover:text-white"
@@ -101,8 +101,11 @@ export default function GameControls() {
               <div className="text-[10px] font-semibold uppercase tracking-[0.35em] text-white/40">
                 Sim Pace
               </div>
-              <div className="text-[11px] font-medium text-white/35">
-                Esc menu | F fullscreen
+              <div className="hidden text-[11px] font-medium text-white/35 sm:block">
+                Esc · F fullscreen
+              </div>
+              <div className="text-[10px] font-medium text-white/35 sm:hidden">
+                Tap Game Menu to pause
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -111,7 +114,7 @@ export default function GameControls() {
                   key={speed}
                   onClick={() => setGameSpeed(speed)}
                   disabled={isFinished}
-                  className={`rounded-full px-4 py-2 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-35 ${
+                  className={`min-h-[44px] rounded-full px-4 py-2.5 text-sm font-bold transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-35 ${
                     gameSpeed === speed
                       ? "bg-cyan-300 text-slate-950 shadow-lg"
                       : "border border-white/10 bg-slate-950/55 text-white/65 hover:border-white/20 hover:text-white"
