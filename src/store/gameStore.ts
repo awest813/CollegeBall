@@ -70,6 +70,8 @@ export interface GameStore {
   playerStats: Record<string, PlayerGameStats>;
   /** The current phase of the match (e.g. PRE_GAME, IN_PLAY, FULL_TIME). */
   phase: MatchPhase;
+  /** Current overtime period: 0 = regulation, 1 = first OT, 2 = second OT, … */
+  overtimePeriod: number;
   /** Raw sim events emitted on the latest tick. */
   latestEvents: SimEvent[];
 
@@ -121,6 +123,7 @@ export const useGameStore = create<GameStore>((set) => ({
       teamFouls: { home: 0, away: 0 },
       playerStats: {},
       phase: "PRE_GAME" as MatchPhase,
+      overtimePeriod: 0,
       latestEvents: [],
       gameClock: {
         remaining: defaultGameSettings.halfLength,
@@ -168,6 +171,7 @@ export const useGameStore = create<GameStore>((set) => ({
   teamFouls: { home: 0, away: 0 },
   playerStats: {},
   phase: "PRE_GAME" as MatchPhase,
+  overtimePeriod: 0,
   latestEvents: [],
 
   // Actions
@@ -180,6 +184,7 @@ export const useGameStore = create<GameStore>((set) => ({
       teamFouls: { home: 0, away: 0 },
       playerStats: {},
       phase: "PRE_GAME" as MatchPhase,
+      overtimePeriod: 0,
       latestEvents: [],
       gameClock: {
         remaining: defaultGameSettings.halfLength,
@@ -213,6 +218,7 @@ export const useGameStore = create<GameStore>((set) => ({
       teamFouls: state.teamFouls,
       playerStats: state.playerStats,
       phase: state.phase,
+      overtimePeriod: state.overtimePeriod,
       latestEvents: state.events,
     }),
 }));

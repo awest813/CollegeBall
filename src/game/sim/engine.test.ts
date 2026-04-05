@@ -12,6 +12,7 @@ const tinySettings: GameSettings = {
   bonusFoulThreshold: 7,
   doubleBonusThreshold: 10,
   subStaminaThreshold: 25,
+  homeCourtBonus: true,
 };
 
 function makeTeam(
@@ -144,5 +145,44 @@ describe("tick — match flow", () => {
     expect(state.players.filter((p) => p.teamId === "home")).toHaveLength(5);
     expect(state.players.filter((p) => p.teamId === "away")).toHaveLength(5);
     expect(state.possession.team === "home" || state.possession.team === "away").toBe(true);
+  });
+
+  it("transitions to OVERTIME when the game is tied at the end of regulation", () => {
+    const h = ["h1", "h2", "h3", "h4", "h5"];
+    const a = ["a1", "a2", "a3", "a4", "a5"];
+    const home = makeTeam("home", "Home", h);
+    const away = makeTeam("away", "Away", a);
+
+    // Fast-forward to 2nd half in play
+    let state = createInitialSimState(home, away, tinySettings);
+    const dt = 1 / 60;
+    for (let i = 0; i < 500_000; i++) {
+      state = tick(state, dt, tinySettings);
+      if (state.phase === "IN_PLAY" && state.gameClock.half === 2) break;
+    }
+    expect(state.phase).toBe("IN_PLAY");
+    expect(state.gameClock.half).toBe(2);
+
+    // Force a tie and run the clock out
+    state = { ...state, score: { home: 42, away: 42 } };
+    for (let i = 0; i < 500_000; i++) {
+      state = tick(state, dt, tinySettings);
+      if (state.phase === "OVERTIME" || state.phase === "FULL_TIME" || state.phase === "FINISHED") break;
+    }
+
+    expect(state.phase).toBe("OVERTIME");
+    expect(state.overtimePeriod).toBe(1);
+    expect(state.events.some((e) => e.type === "overtime_start")).toBe(true);
+    expect(state.gameClock.remaining).toBe(5 * 60); // 5-minute OT clock loaded
+    expect(state.teamFouls).toEqual({ home: 0, away: 0 }); // fouls reset for OT
+  });
+
+  it("initialises overtimePeriod at 0 and exposes _hotStreak in new state", () => {
+    const home = makeTeam("home", "Home", ["h1", "h2", "h3", "h4", "h5"]);
+    const away = makeTeam("away", "Away", ["a1", "a2", "a3", "a4", "a5"]);
+    const state = createInitialSimState(home, away, tinySettings);
+    expect(state.overtimePeriod).toBe(0);
+    expect(state._hotStreak).toEqual({});
+    expect(state._isFastBreak).toBe(false);
   });
 });

@@ -257,9 +257,12 @@ export function createInitialSimState(
     score: { home: 0, away: 0 },
     teamFouls: { home: 0, away: 0 },
     playerStats,
+    overtimePeriod: 0,
     _timeSinceLastAction: 0,
     shotInFlight: false,
     _timeSinceLastTargetAssign: 0,
+    _isFastBreak: false,
+    _hotStreak: {},
     events: [],
   };
 }
@@ -273,6 +276,34 @@ const BALL_HELD_HEIGHT = 3.5;
 const PASS_INTERVAL_MIN = 1.5; // seconds between passes at minimum
 const SHOT_CHANCE_PER_SECOND = 0.08; // probability / sec of a shot attempt (base)
 const SHOT_FLIGHT_TIME = 0.8; // seconds
+
+// ── Overtime constants ────────────────────────────────────────────────────────
+
+/** Duration of each overtime period in seconds (NCAA: 5 minutes). */
+const OT_LENGTH = 5 * 60;
+
+// ── Home-court advantage constants ───────────────────────────────────────────
+
+/** Bonus added to field-goal make probability for the home team. */
+const HOME_COURT_SHOT_BONUS = 0.02;
+/** Bonus added to free-throw make rate for the home team. */
+const HOME_COURT_FT_BONUS = 0.03;
+
+// ── Fast-break constants ──────────────────────────────────────────────────────
+
+/** Seconds before the fast-break advantage expires if no shot is taken. */
+const FAST_BREAK_EXPIRY = 4.0;
+/** Bonus added to field-goal make probability on a fast-break shot. */
+const FAST_BREAK_SHOT_BONUS = 0.10;
+/** Multiplier applied to SHOT_CHANCE_PER_SECOND during a fast break. */
+const FAST_BREAK_SHOT_CHANCE_MULT = 1.5;
+
+// ── Hot-hand constants ────────────────────────────────────────────────────────
+
+/** Maximum streak level tracked (caps bonus at this many consecutive makes). */
+const HOT_STREAK_MAX = 3;
+/** Make-probability bonus per consecutive-makes level (e.g. +2 % per level). */
+const HOT_STREAK_BONUS_PER_LEVEL = 0.02;
 
 /** Maximum make probability for a close-range layup/dunk. */
 const MAX_LAYUP_PROBABILITY = 0.72;
@@ -574,6 +605,7 @@ export function tick(
     playerStats: Object.fromEntries(
       Object.entries(prev.playerStats).map(([id, s]) => [id, { ...s }])
     ),
+    _hotStreak: { ...(prev._hotStreak ?? {}) },
     events: [],
   };
 
@@ -608,6 +640,19 @@ export function tick(
         state.shotClock.running = true;
         state._timeSinceLastAction = 0;
         ctx.events.push({ type: "possession_change", message: "2nd HALF START!" });
+      }
+      break;
+
+    case "OVERTIME":
+      if (state._timeSinceLastAction > 3.0) {
+        state.phase = "IN_PLAY";
+        state.gameClock.running = true;
+        state.shotClock.running = true;
+        state._timeSinceLastAction = 0;
+        ctx.events.push({
+          type: "possession_change",
+          message: state.overtimePeriod === 1 ? "OVERTIME START!" : `OT${state.overtimePeriod} START!`,
+        });
       }
       break;
 
@@ -694,7 +739,30 @@ function tickClocks(ctx: TickContext): void {
         state.gameClock.remaining = 0;
         state.shotClock.remaining = 0;
         state._timeSinceLastAction = 0;
-        ctx.events.push({ type: "game_end", message: "Final Buzzer — Game Over!" });
+
+        if (state.score.home === state.score.away) {
+          // Tied at the buzzer — start an overtime period
+          state.overtimePeriod += 1;
+          state.phase = "OVERTIME";
+          state.gameClock.remaining = OT_LENGTH;
+          state.shotClock.remaining = settings.shotClockLength;
+          // Fouls reset each extra period (NCAA rules)
+          state.teamFouls = { home: 0, away: 0 };
+          // Possession alternates from the team that started the previous half
+          const otTeam: PossessionTeam = state.possession.team === "home" ? "away" : "home";
+          state.possession.team = otTeam;
+          inboundBallHandler(state, otTeam, null);
+          assignTargets(state.players, otTeam, state.possession.ballHandlerId);
+          ctx.events.push({
+            type: "overtime_start",
+            message: state.overtimePeriod === 1 ? "Tied game — OVERTIME!" : `Still tied — OT${state.overtimePeriod}!`,
+          });
+        } else {
+          state.phase = "FULL_TIME";
+          state.gameClock.running = false;
+          state.shotClock.running = false;
+          ctx.events.push({ type: "game_end", message: "Final Buzzer — Game Over!" });
+        }
         return;
       }
     }
@@ -774,8 +842,14 @@ function tickBallHandler(ctx: TickContext): void {
   // half-court.  At 0 ft → 2.0×, at 20 ft → 1.0×, at 40 ft → 0.1× (clamped).
   const distFactor = Math.max(0.1, 1 + (20 - distToBasket) / 20);
 
+  // Fast-break: boost shot chance and expire after FAST_BREAK_EXPIRY seconds.
+  const fastBreakMult = state._isFastBreak ? FAST_BREAK_SHOT_CHANCE_MULT : 1;
+  if (state._isFastBreak && state._timeSinceLastAction > FAST_BREAK_EXPIRY) {
+    state._isFastBreak = false;
+  }
+
   const effectiveShotChance =
-    SHOT_CHANCE_PER_SECOND * shootingBias * distFactor * shotClockPressure * dt;
+    SHOT_CHANCE_PER_SECOND * shootingBias * distFactor * shotClockPressure * fastBreakMult * dt;
 
   if (state._timeSinceLastAction > PASS_INTERVAL_MIN && Math.random() < effectiveShotChance) {
     attemptShot(ctx, handler);
@@ -865,7 +939,8 @@ function resolveOneAndOne(
   shootingTeam: PossessionTeam
 ): void {
   const { state } = ctx;
-  const ftRate = Math.min(MAX_FT_RATE, MIN_FT_RATE + (shooter.ratings.shooting / 100) * FT_RATING_FACTOR);
+  const homeBonus = ctx.settings.homeCourtBonus && shootingTeam === "home" ? HOME_COURT_FT_BONUS : 0;
+  const ftRate = Math.min(MAX_FT_RATE, MIN_FT_RATE + (shooter.ratings.shooting / 100) * FT_RATING_FACTOR + homeBonus);
 
   // First attempt
   const firstMade = Math.random() < ftRate;
@@ -940,6 +1015,7 @@ function attemptShot(ctx: TickContext, shooter: SimPlayer): void {
  * Resolve `count` free throw attempts for `shooter`.
  * Free-throw percentage is derived from the shooter's shooting rating:
  *   rating 0 → 55 %; rating 50 → 70 %; rating 100 → 85 %.
+ * Home-court advantage adds a small bonus for the home team.
  * Score and player stats are updated in place on `ctx.state`.
  */
 function resolveFreeThrows(
@@ -949,7 +1025,8 @@ function resolveFreeThrows(
   shootingTeam: PossessionTeam
 ): void {
   const { state } = ctx;
-  const ftRate = Math.min(MAX_FT_RATE, MIN_FT_RATE + (shooter.ratings.shooting / 100) * FT_RATING_FACTOR);
+  const homeBonus = ctx.settings.homeCourtBonus && shootingTeam === "home" ? HOME_COURT_FT_BONUS : 0;
+  const ftRate = Math.min(MAX_FT_RATE, MIN_FT_RATE + (shooter.ratings.shooting / 100) * FT_RATING_FACTOR + homeBonus);
 
   for (let i = 0; i < count; i++) {
     const made = Math.random() < ftRate;
@@ -1063,6 +1140,25 @@ function resolveShotInFlight(ctx: TickContext): void {
       makeProb *= 1 - t * MAX_STAMINA_SHOT_PENALTY;
     }
 
+    // Fast-break: open court means a higher-quality shot attempt.
+    if (state._isFastBreak) {
+      makeProb = Math.min(MAX_LAYUP_PROBABILITY, makeProb + FAST_BREAK_SHOT_BONUS);
+      state._isFastBreak = false; // fast-break opportunity consumed
+    }
+
+    // Hot-hand: consecutive makes provide a small extra boost.
+    if (shooter) {
+      const streak = Math.min(HOT_STREAK_MAX, state._hotStreak?.[shooter.id] ?? 0);
+      if (streak > 0) {
+        makeProb = Math.min(MAX_LAYUP_PROBABILITY, makeProb + streak * HOT_STREAK_BONUS_PER_LEVEL);
+      }
+    }
+
+    // Home-court advantage: small boost to the home team's field-goal percentage.
+    if (ctx.settings.homeCourtBonus && state.possession.team === "home") {
+      makeProb = Math.min(MAX_LAYUP_PROBABILITY, makeProb + HOME_COURT_SHOT_BONUS);
+    }
+
     // Track field-goal attempt in stats
     if (shooter && state.playerStats[shooter.id]) {
       state.playerStats[shooter.id].fieldGoalsAttempted += 1;
@@ -1070,6 +1166,14 @@ function resolveShotInFlight(ctx: TickContext): void {
     }
 
     const made = Math.random() < makeProb;
+
+    // Update hot-streak counter for this shooter
+    if (shooter) {
+      if (!state._hotStreak) state._hotStreak = {};
+      state._hotStreak[shooter.id] = made
+        ? Math.min(HOT_STREAK_MAX, (state._hotStreak[shooter.id] ?? 0) + 1)
+        : 0;
+    }
 
     // ── Shooting foul detection ─────────────────────────────────────────────
     // A defender very close to the shooter (within FOUL_RANGE_FT) who still
@@ -1259,6 +1363,23 @@ function resolveRebound(ctx: TickContext, basketPos: CourtPosition): void {
     state._timeSinceLastAction = 0;
     state._timeSinceLastTargetAssign = 0;
     assignTargets(state.players, rebounder.teamId, rebounder.id);
+
+    // Fast-break opportunity: if fewer than 2 opponents are goal-side of the rebounder
+    // the rebounding team can push ahead in transition.
+    const rebBallX = rebounder.position.x;
+    const rebOpp = state.players.filter((p) => p.teamId !== rebounder.teamId);
+    const rebGoalSide = rebOpp.filter((p) =>
+      rebounder.teamId === "home" ? p.position.x > rebBallX : p.position.x < rebBallX
+    ).length;
+    if (rebGoalSide <= 1) {
+      state._isFastBreak = true;
+      ctx.events.push({
+        type: "fast_break",
+        teamId: rebounder.teamId,
+        message: "Fast break!",
+      });
+    }
+
     ctx.events.push({
       type: "rebound",
       playerId: rebounder.id,
@@ -1312,6 +1433,23 @@ function executePass(ctx: TickContext, from: SimPlayer, to: SimPlayer): void {
 
         if (state.playerStats[nearestDef.player.id]) {
           state.playerStats[nearestDef.player.id].steals += 1;
+        }
+
+        // Steals frequently generate fast-break chances — check if fewer than 2
+        // opponents are goal-side of the stealer (outnumbered in transition).
+        const newOffTeam = nearestDef.player.teamId;
+        const ballX = nearestDef.player.position.x;
+        const newDefs = state.players.filter((p) => p.teamId !== newOffTeam);
+        const goalSideCount = newDefs.filter((p) =>
+          newOffTeam === "home" ? p.position.x > ballX : p.position.x < ballX
+        ).length;
+        if (goalSideCount <= 2) {
+          state._isFastBreak = true;
+          ctx.events.push({
+            type: "fast_break",
+            teamId: newOffTeam,
+            message: "Fast break!",
+          });
         }
 
         ctx.events.push({

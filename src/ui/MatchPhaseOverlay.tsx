@@ -1,11 +1,12 @@
 import { useGameStore } from "../store/gameStore";
 
 export default function MatchPhaseOverlay() {
-  const phase     = useGameStore((s) => s.phase);
-  const simStatus = useGameStore((s) => s.simStatus);
-  const homeTeam  = useGameStore((s) => s.homeTeam);
-  const awayTeam  = useGameStore((s) => s.awayTeam);
-  const score     = useGameStore((s) => s.score);
+  const phase          = useGameStore((s) => s.phase);
+  const simStatus      = useGameStore((s) => s.simStatus);
+  const homeTeam       = useGameStore((s) => s.homeTeam);
+  const awayTeam       = useGameStore((s) => s.awayTeam);
+  const score          = useGameStore((s) => s.score);
+  const overtimePeriod = useGameStore((s) => s.overtimePeriod);
 
   if (simStatus !== "running" && phase !== "FULL_TIME" && phase !== "FINISHED") return null;
   if (phase === "IN_PLAY" || phase === "FINISHED") return null;
@@ -30,6 +31,12 @@ export default function MatchPhaseOverlay() {
       subtitle = "Teams switching sides";
       accent   = "#38bdf8";
       break;
+    case "OVERTIME": {
+      title    = overtimePeriod === 1 ? "OVERTIME" : `OT${overtimePeriod}`;
+      subtitle = "Game tied — extra period!";
+      accent   = "#f97316"; // orange for urgency
+      break;
+    }
     case "FULL_TIME": {
       const homeWon = score.home > score.away;
       const awayWon = score.away > score.home;
@@ -83,8 +90,8 @@ export default function MatchPhaseOverlay() {
           {subtitle}
         </p>
 
-        {/* Score hint for halftime / full time */}
-        {(phase === "HALFTIME" || phase === "FULL_TIME") && (
+        {/* Score hint for halftime / overtime / full time */}
+        {(phase === "HALFTIME" || phase === "OVERTIME" || phase === "FULL_TIME") && (
           <div className="mt-5 flex items-center gap-4">
             <span className="font-mono text-3xl font-black text-white tabular-nums">
               {score.home}
