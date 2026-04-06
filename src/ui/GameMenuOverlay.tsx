@@ -17,9 +17,11 @@ export default function GameMenuOverlay() {
   const awayTeam = useGameStore((s) => s.awayTeam);
   const cameraMode = useGameStore((s) => s.cameraMode);
   const gameSpeed = useGameStore((s) => s.gameSpeed);
+  const gameContext = useGameStore((s) => s.gameContext);
   const closePauseMenu = useGameStore((s) => s.closePauseMenu);
   const startExhibition = useGameStore((s) => s.startExhibition);
   const returnToMainMenu = useGameStore((s) => s.returnToMainMenu);
+  const returnToSeasonHub = useGameStore((s) => s.returnToSeasonHub);
 
   if (!isPauseMenuOpen || simStatus === "finished") {
     return null;
@@ -111,12 +113,21 @@ export default function GameMenuOverlay() {
             >
               Resume Game
             </button>
-            <button
-              onClick={startExhibition}
-              className="rounded-[24px] border border-white/10 bg-white/6 px-5 py-4 text-left text-base font-bold uppercase tracking-[0.16em] text-white transition hover:border-white/20 hover:bg-white/10"
-            >
-              Restart Exhibition
-            </button>
+            {gameContext === "season" ? (
+              <button
+                onClick={returnToSeasonHub}
+                className="rounded-[24px] border border-white/10 bg-white/6 px-5 py-4 text-left text-base font-bold uppercase tracking-[0.16em] text-white transition hover:border-white/20 hover:bg-white/10"
+              >
+                Return to Season
+              </button>
+            ) : (
+              <button
+                onClick={startExhibition}
+                className="rounded-[24px] border border-white/10 bg-white/6 px-5 py-4 text-left text-base font-bold uppercase tracking-[0.16em] text-white transition hover:border-white/20 hover:bg-white/10"
+              >
+                Restart Exhibition
+              </button>
+            )}
             <button
               onClick={returnToMainMenu}
               className="rounded-[24px] border border-white/10 bg-white/6 px-5 py-4 text-left text-base font-bold uppercase tracking-[0.16em] text-white transition hover:border-white/20 hover:bg-white/10"

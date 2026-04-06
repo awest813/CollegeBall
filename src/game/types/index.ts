@@ -222,7 +222,7 @@ export interface SimEvent {
 // Game State (UI-level)
 // ---------------------------------------------------------------------------
 
-export type Screen = "menu" | "game";
+export type Screen = "menu" | "game" | "season";
 
 export type GameSpeed = 1 | 2 | 4;
 
@@ -242,6 +242,71 @@ export interface GameSettings {
    * percentage to simulate home-court crowd energy and familiarity.
    */
   homeCourtBonus: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Head Coach & Season Mode
+// ---------------------------------------------------------------------------
+
+/** Head coach profile. Ratings affect strategic tendencies and team growth. */
+export interface Coach {
+  id: string;
+  firstName: string;
+  lastName: string;
+  /** Offensive system rating — affects shot selection and pace tendencies. */
+  offense: number; // 0–100
+  /** Defensive system rating — affects defensive intensity. */
+  defense: number; // 0–100
+  /** Recruiting rating — affects incoming talent quality. */
+  recruiting: number; // 0–100
+  /** Player development rating — affects in-season player growth. */
+  development: number; // 0–100
+}
+
+/** Lightweight opponent descriptor stored within the season schedule. */
+export interface SeasonOpponent {
+  id: string;
+  name: string;
+  abbreviation: string;
+  primaryColor: string;
+  secondaryColor: string;
+  /** Composite quality rating (60–90) used to scale the opponent's generated roster. */
+  overall: number;
+}
+
+/** One game entry in the season schedule. */
+export interface SeasonGame {
+  id: string;
+  /** Week number in the season (1-based). */
+  week: number;
+  /** True when the user's team is playing at home. */
+  isHome: boolean;
+  opponent: SeasonOpponent;
+  /** null until the game has been played. */
+  result: "win" | "loss" | null;
+  /** User team's final score; null until played. */
+  userScore: number | null;
+  /** Opponent's final score; null until played. */
+  opponentScore: number | null;
+}
+
+/** Cumulative win/loss record for the season. */
+export interface SeasonRecord {
+  wins: number;
+  losses: number;
+}
+
+/** Full season state for head-coach mode. */
+export interface Season {
+  /** Four-digit season year (e.g. 2025). */
+  year: number;
+  coach: Coach;
+  /** The team you are head-coaching. */
+  team: Team;
+  schedule: SeasonGame[];
+  record: SeasonRecord;
+  /** Index into schedule of the next unplayed game. Equals schedule.length when the season is complete. */
+  currentGameIndex: number;
 }
 
 // ---------------------------------------------------------------------------

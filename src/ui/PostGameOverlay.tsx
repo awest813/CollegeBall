@@ -10,13 +10,15 @@ import { useGameStore } from "../store/gameStore";
 import type { PlayerGameStats, Team } from "../game/types";
 
 export default function PostGameOverlay() {
-  const simStatus = useGameStore((s) => s.simStatus);
-  const score = useGameStore((s) => s.score);
-  const homeTeam = useGameStore((s) => s.homeTeam);
-  const awayTeam = useGameStore((s) => s.awayTeam);
-  const playerStats = useGameStore((s) => s.playerStats);
-  const startExhibition = useGameStore((s) => s.startExhibition);
-  const returnToMainMenu = useGameStore((s) => s.returnToMainMenu);
+  const simStatus         = useGameStore((s) => s.simStatus);
+  const score             = useGameStore((s) => s.score);
+  const homeTeam          = useGameStore((s) => s.homeTeam);
+  const awayTeam          = useGameStore((s) => s.awayTeam);
+  const playerStats       = useGameStore((s) => s.playerStats);
+  const gameContext       = useGameStore((s) => s.gameContext);
+  const startExhibition   = useGameStore((s) => s.startExhibition);
+  const returnToMainMenu  = useGameStore((s) => s.returnToMainMenu);
+  const returnToSeasonHub = useGameStore((s) => s.returnToSeasonHub);
 
   if (simStatus !== "finished") return null;
 
@@ -104,18 +106,37 @@ export default function PostGameOverlay() {
 
       {/* Action buttons */}
       <div className="flex flex-wrap justify-center gap-3 px-4">
-        <button
-          onClick={startExhibition}
-          className="min-h-[44px] rounded-xl bg-yellow-400 px-8 py-3 text-sm font-bold tracking-wide text-black shadow-lg transition-all hover:bg-yellow-300 active:scale-95"
-        >
-          Play Again
-        </button>
-        <button
-          onClick={returnToMainMenu}
-          className="min-h-[44px] rounded-xl border border-white/15 bg-white/10 px-8 py-3 text-sm font-semibold text-white transition-all hover:bg-white/20 active:scale-95"
-        >
-          Main Menu
-        </button>
+        {gameContext === "season" ? (
+          <>
+            <button
+              onClick={returnToSeasonHub}
+              className="min-h-[44px] rounded-xl bg-yellow-400 px-8 py-3 text-sm font-bold tracking-wide text-black shadow-lg transition-all hover:bg-yellow-300 active:scale-95"
+            >
+              Return to Season
+            </button>
+            <button
+              onClick={returnToMainMenu}
+              className="min-h-[44px] rounded-xl border border-white/15 bg-white/10 px-8 py-3 text-sm font-semibold text-white transition-all hover:bg-white/20 active:scale-95"
+            >
+              Main Menu
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              onClick={startExhibition}
+              className="min-h-[44px] rounded-xl bg-yellow-400 px-8 py-3 text-sm font-bold tracking-wide text-black shadow-lg transition-all hover:bg-yellow-300 active:scale-95"
+            >
+              Play Again
+            </button>
+            <button
+              onClick={returnToMainMenu}
+              className="min-h-[44px] rounded-xl border border-white/15 bg-white/10 px-8 py-3 text-sm font-semibold text-white transition-all hover:bg-white/20 active:scale-95"
+            >
+              Main Menu
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
