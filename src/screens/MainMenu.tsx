@@ -10,9 +10,9 @@ const MODE_CARDS = [
   },
   {
     title: "Season",
-    status: "In development",
+    status: "Early access",
     summary: "Schedule flow, roster management, and long-form progression.",
-    active: false,
+    active: true,
   },
   {
     title: "Tournament",
@@ -42,8 +42,9 @@ const SUPPORT_RIBBON = [
 
 export default function MainMenu() {
   const startExhibition = useGameStore((s) => s.startExhibition);
-  const homeTeam = useGameStore((s) => s.homeTeam);
-  const awayTeam = useGameStore((s) => s.awayTeam);
+  const startSeason     = useGameStore((s) => s.startSeason);
+  const homeTeam        = useGameStore((s) => s.homeTeam);
+  const awayTeam        = useGameStore((s) => s.awayTeam);
 
   const homeProfile = getTeamProfile(homeTeam);
   const awayProfile = getTeamProfile(awayTeam);
@@ -112,9 +113,8 @@ export default function MainMenu() {
                     Start Exhibition
                   </button>
                   <button
-                    disabled
-                    className="rounded-full border border-white/12 bg-white/5 px-6 py-3.5 text-sm font-semibold uppercase tracking-[0.18em] text-white/42"
-                    title="Season flow is still in development"
+                    onClick={startSeason}
+                    className="rounded-full border border-cyan-300/20 bg-cyan-300/8 px-6 py-3.5 text-sm font-semibold uppercase tracking-[0.18em] text-cyan-100/80 transition hover:bg-cyan-300/14"
                   >
                     Season Hub
                   </button>

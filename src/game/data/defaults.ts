@@ -9,6 +9,10 @@ import type {
   PlayerPosition,
   GameSettings,
   Lineup,
+  Coach,
+  SeasonOpponent,
+  SeasonGame,
+  Season,
 } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -119,3 +123,138 @@ export const defaultGameSettings: GameSettings = {
   subStaminaThreshold: 25, // sub out players below 25% stamina
   homeCourtBonus: true, // home team receives a small shooting/FT advantage
 };
+
+// ---------------------------------------------------------------------------
+// Head Coach & Season Mode data
+// ---------------------------------------------------------------------------
+
+export const defaultCoach: Coach = {
+  id: "coach_default",
+  firstName: "Mike",
+  lastName: "Reynolds",
+  offense: 72,
+  defense: 68,
+  recruiting: 65,
+  development: 70,
+};
+
+/** Ten opponents that make up a default season schedule. */
+const SEASON_OPPONENTS: SeasonOpponent[] = [
+  { id: "opp_1",  name: "Riverside Hawks",   abbreviation: "RVH", primaryColor: "#7c3aed", secondaryColor: "#ffffff", overall: 68 },
+  { id: "opp_2",  name: "Eastwood Eagles",   abbreviation: "EWE", primaryColor: "#0369a1", secondaryColor: "#fbbf24", overall: 72 },
+  { id: "opp_3",  name: "Summit Wolves",     abbreviation: "SMW", primaryColor: "#047857", secondaryColor: "#ffffff", overall: 76 },
+  { id: "opp_4",  name: "Lakeview Lions",    abbreviation: "LVL", primaryColor: "#b45309", secondaryColor: "#ffffff", overall: 71 },
+  { id: "opp_5",  name: "Northgate Rams",    abbreviation: "NGR", primaryColor: "#be123c", secondaryColor: "#f1f5f9", overall: 80 },
+  { id: "opp_6",  name: "Crestwood Cougars", abbreviation: "CWC", primaryColor: "#0f766e", secondaryColor: "#ffffff", overall: 74 },
+  { id: "opp_7",  name: "Valley Falcons",    abbreviation: "VLF", primaryColor: "#6d28d9", secondaryColor: "#fbbf24", overall: 78 },
+  { id: "opp_8",  name: "Hillside Spartans", abbreviation: "HLS", primaryColor: "#1e3a8a", secondaryColor: "#e2e8f0", overall: 69 },
+  { id: "opp_9",  name: "Westbrook Bears",   abbreviation: "WBB", primaryColor: "#92400e", secondaryColor: "#ffffff", overall: 83 },
+  { id: "opp_10", name: "Pinewood Panthers", abbreviation: "PWP", primaryColor: "#1f2937", secondaryColor: "#10b981", overall: 65 },
+];
+
+/** Name pools for generating opponent rosters. */
+const OPP_FIRST_NAMES = [
+  "Marcus", "Jordan", "Anthony", "Kevin", "James", "Michael", "David",
+  "Ryan", "Justin", "Brandon", "Darius", "Isaiah", "Caleb", "Noah", "Jaden",
+];
+const OPP_LAST_NAMES = [
+  "Johnson", "Williams", "Brown", "Davis", "Carter", "Harris", "Martin",
+  "Clark", "Walker", "Thompson", "Wilson", "Taylor", "Lee", "Young", "Allen",
+];
+
+/**
+ * Generate player ratings scaled to an opponent's overall quality.
+ * `overall` of 60 produces near-minimum ratings; 90 produces near-maximum.
+ */
+function makeScaledRatings(pos: PlayerPosition, overall: number): import("../types").PlayerRatings {
+  const factor = Math.max(0, Math.min(1, (overall - 60) / 30));
+  const r = RATING_RANGES[pos];
+  const pick = (range: [number, number]): number => {
+    const lo = range[0];
+    const hi = range[1];
+    const center = lo + (hi - lo) * factor;
+    const spread = (hi - lo) * 0.25;
+    return Math.round(Math.max(lo, Math.min(hi, center + (Math.random() - 0.5) * spread * 2)));
+  };
+  return {
+    speed:      pick(r.speed),
+    shooting:   pick(r.shooting),
+    passing:    pick(r.passing),
+    defense:    pick(r.defense),
+    rebounding: pick(r.rebounding),
+    endurance:  pick(r.endurance),
+  };
+}
+
+/**
+ * Generate a full Team for a season opponent.
+ * Called just before the game starts so ratings are freshly randomised.
+ */
+export function makeOpponentTeam(opponent: SeasonOpponent): Team {
+  const slots: [PlayerPosition, number][] = [
+    ["PG", 1], ["SG", 2], ["SF", 3], ["PF", 4], ["C", 5],
+    ["PG", 11], ["SG", 12], ["SF", 13],
+  ];
+
+  const usedFirst = new Set<string>();
+  const usedLast  = new Set<string>();
+
+  const pickName = (pool: string[], used: Set<string>): string => {
+    const available = pool.filter((n) => !used.has(n));
+    const source = available.length > 0 ? available : pool;
+    const name = source[Math.floor(Math.random() * source.length)];
+    used.add(name);
+    return name;
+  };
+
+  const players: Player[] = slots.map(([pos, num]) => ({
+    id: uid(),
+    firstName: pickName(OPP_FIRST_NAMES, usedFirst),
+    lastName:  pickName(OPP_LAST_NAMES,  usedLast),
+    number:    num,
+    position:  pos,
+    ratings:   makeScaledRatings(pos, opponent.overall),
+  }));
+
+  return {
+    id:             opponent.id,
+    name:           opponent.name,
+    abbreviation:   opponent.abbreviation,
+    primaryColor:   opponent.primaryColor,
+    secondaryColor: opponent.secondaryColor,
+    roster:         players,
+    lineup:         players.slice(0, 5).map((p) => p.id) as Lineup,
+  };
+}
+
+/** Compute a single composite overall rating for a team (0–100). */
+export function computeTeamOverall(team: Team): number {
+  const n = team.roster.length || 1;
+  const sum = team.roster.reduce((acc, p) => {
+    const { speed, shooting, passing, defense, rebounding } = p.ratings;
+    return acc + (speed + shooting + passing + defense + rebounding) / 5;
+  }, 0);
+  return Math.round(sum / n);
+}
+
+/** Build a fresh 10-game default season. */
+export function createDefaultSeason(): Season {
+  const schedule: SeasonGame[] = SEASON_OPPONENTS.map((opp, i) => ({
+    id:           `game_${i + 1}`,
+    week:         i + 1,
+    isHome:       i % 2 === 0, // alternate home / away
+    opponent:     opp,
+    result:       null,
+    userScore:    null,
+    opponentScore: null,
+  }));
+
+  return {
+    year:              2025,
+    coach:             defaultCoach,
+    team:              { ...defaultHomeTeam, roster: [...defaultHomeTeam.roster] },
+    schedule,
+    record:            { wins: 0, losses: 0 },
+    currentGameIndex:  0,
+  };
+}
