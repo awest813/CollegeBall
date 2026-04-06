@@ -259,7 +259,12 @@ export const useGameStore = create<GameStore>((set) => ({
       return {
         homeTeam: season.team,
         awayTeam: opponentTeam,
-        settings: { ...defaultGameSettings, homeCourtBonus: game.isHome },
+        settings: {
+          ...defaultGameSettings,
+          homeCourtBonus: game.isHome,
+          coachOffense: season.coach.offense,
+          coachDefense: season.coach.defense,
+        },
         screen: "game" as Screen,
         simStatus: "running" as SimStatus,
         gameContext: "season" as "exhibition" | "season",
@@ -349,6 +354,33 @@ export const useGameStore = create<GameStore>((set) => ({
           const opponentScore = state.score.away;
           const result: "win" | "loss" = userScore >= opponentScore ? "win" : "loss";
 
+          // Merge this game's player stats into the cumulative season stats
+          const prevSeasonStats = season.seasonStats ?? {};
+          const mergedStats: Record<string, import("../game/types").PlayerGameStats> = { ...prevSeasonStats };
+          for (const [playerId, gameStats] of Object.entries(state.playerStats)) {
+            const prev = mergedStats[playerId];
+            if (!prev) {
+              mergedStats[playerId] = { ...gameStats };
+            } else {
+              mergedStats[playerId] = {
+                points:               prev.points               + gameStats.points,
+                fieldGoalsMade:       prev.fieldGoalsMade       + gameStats.fieldGoalsMade,
+                fieldGoalsAttempted:  prev.fieldGoalsAttempted  + gameStats.fieldGoalsAttempted,
+                threesMade:           prev.threesMade           + gameStats.threesMade,
+                threesAttempted:      prev.threesAttempted      + gameStats.threesAttempted,
+                freeThrowsMade:       prev.freeThrowsMade       + gameStats.freeThrowsMade,
+                freeThrowsAttempted:  prev.freeThrowsAttempted  + gameStats.freeThrowsAttempted,
+                rebounds:             prev.rebounds             + gameStats.rebounds,
+                assists:              prev.assists              + gameStats.assists,
+                steals:               prev.steals               + gameStats.steals,
+                turnovers:            prev.turnovers            + gameStats.turnovers,
+                blocks:               prev.blocks               + gameStats.blocks,
+                fouls:                prev.fouls                + gameStats.fouls,
+                minutesPlayed:        prev.minutesPlayed        + gameStats.minutesPlayed,
+              };
+            }
+          }
+
           updatedSeason = {
             ...season,
             schedule: season.schedule.map((g, i) =>
@@ -359,6 +391,8 @@ export const useGameStore = create<GameStore>((set) => ({
               losses: season.record.losses + (result === "loss" ? 1 : 0),
             },
             currentGameIndex: idx + 1,
+            seasonStats: mergedStats,
+            gamesPlayedWithStats: (season.gamesPlayedWithStats ?? 0) + 1,
           };
         }
       }

@@ -7,12 +7,14 @@
 
 import { useGameStore } from "../store/gameStore";
 import type { Coach, Season, SeasonGame, SeasonRecord } from "../game/types";
+import type { Player, PlayerGameStats } from "../game/types";
 
 export default function SeasonHub() {
-  const season         = useGameStore((s) => s.season);
-  const playSeasonGame = useGameStore((s) => s.playSeasonGame);
+  const season             = useGameStore((s) => s.season);
+  const playSeasonGame     = useGameStore((s) => s.playSeasonGame);
   const simulateSeasonGame = useGameStore((s) => s.simulateSeasonGame);
-  const setScreen      = useGameStore((s) => s.setScreen);
+  const startSeason        = useGameStore((s) => s.startSeason);
+  const setScreen          = useGameStore((s) => s.setScreen);
 
   if (!season) {
     return (
@@ -65,7 +67,7 @@ export default function SeasonHub() {
 
           {/* ---- Next game or season-complete banner ---- */}
           {isSeasonComplete ? (
-            <SeasonCompleteCard record={season.record} />
+            <SeasonCompleteCard record={season.record} onNewSeason={startSeason} />
           ) : (
             nextGame && (
               <NextGameCard
@@ -74,6 +76,14 @@ export default function SeasonHub() {
                 onSim={simulateSeasonGame}
               />
             )
+          )}
+
+          {/* ---- Roster ---- */}
+          <RosterPanel season={season} />
+
+          {/* ---- Season stats (only shown once at least one 3D game has been played) ---- */}
+          {season.gamesPlayedWithStats > 0 && (
+            <SeasonStatsPanel season={season} />
           )}
 
           {/* ---- Full schedule ---- */}
@@ -249,9 +259,10 @@ function NextGameCard({ game, onPlay, onSim }: NextGameCardProps) {
 
 interface SeasonCompleteCardProps {
   record: SeasonRecord;
+  onNewSeason: () => void;
 }
 
-function SeasonCompleteCard({ record }: SeasonCompleteCardProps) {
+function SeasonCompleteCard({ record, onNewSeason }: SeasonCompleteCardProps) {
   const total = record.wins + record.losses;
   const pct   = total > 0 ? Math.round((record.wins / total) * 100) : 0;
 
@@ -270,6 +281,12 @@ function SeasonCompleteCard({ record }: SeasonCompleteCardProps) {
           ? "Solid year. Keep building the program."
           : "Tough year, but every lesson counts."}
       </p>
+      <button
+        onClick={onNewSeason}
+        className="mt-6 rounded-[22px] bg-emerald-400 px-7 py-3.5 text-sm font-black uppercase tracking-[0.2em] text-slate-950 transition hover:bg-emerald-300 active:scale-95"
+      >
+        New Season
+      </button>
     </div>
   );
 }
@@ -277,6 +294,204 @@ function SeasonCompleteCard({ record }: SeasonCompleteCardProps) {
 interface ScheduleGridProps {
   schedule: SeasonGame[];
   currentIndex: number;
+}
+
+// ---------------------------------------------------------------------------
+// Roster Panel
+// ---------------------------------------------------------------------------
+
+interface RosterPanelProps {
+  season: Season;
+}
+
+const POSITION_LABELS: Record<string, string> = {
+  PG: "PG", SG: "SG", SF: "SF", PF: "PF", C: "C",
+};
+
+function RosterPanel({ season }: RosterPanelProps) {
+  const { team } = season;
+  const lineupIds = new Set(team.lineup);
+  const starters = team.lineup
+    .map((id) => team.roster.find((p) => p.id === id))
+    .filter((p): p is Player => p !== undefined);
+  const bench = team.roster.filter((p) => !lineupIds.has(p.id));
+
+  return (
+    <div className="rounded-[36px] border border-white/10 bg-[rgba(6,14,23,0.82)] px-6 py-7 sm:px-8">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.4em] text-white/42">
+        Roster
+      </div>
+
+      {/* Starters */}
+      <div className="mt-4">
+        <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.35em] text-cyan-200/55">
+          Starters
+        </div>
+        <div className="flex flex-col gap-2">
+          {starters.map((p) => (
+            <RosterRow key={p.id} player={p} />
+          ))}
+        </div>
+      </div>
+
+      {/* Bench */}
+      {bench.length > 0 && (
+        <div className="mt-4">
+          <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.35em] text-white/35">
+            Bench
+          </div>
+          <div className="flex flex-col gap-2">
+            {bench.map((p) => (
+              <RosterRow key={p.id} player={p} isBench />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface RosterRowProps {
+  player: Player;
+  isBench?: boolean;
+}
+
+function RosterRow({ player: p, isBench = false }: RosterRowProps) {
+  const ratings = [
+    { label: "SPD", value: p.ratings.speed },
+    { label: "SHT", value: p.ratings.shooting },
+    { label: "DEF", value: p.ratings.defense },
+    { label: "REB", value: p.ratings.rebounding },
+  ];
+
+  return (
+    <div
+      className={`flex items-center gap-3 rounded-[20px] border px-4 py-3 ${
+        isBench ? "border-white/6 bg-white/[0.02]" : "border-white/10 bg-white/[0.04]"
+      }`}
+    >
+      {/* Jersey number */}
+      <div className="w-6 shrink-0 text-center text-[11px] font-mono font-semibold text-white/35">
+        {p.number}
+      </div>
+
+      {/* Position badge */}
+      <div className="w-8 shrink-0 rounded-md bg-white/8 px-1 py-0.5 text-center text-[10px] font-bold uppercase tracking-[0.2em] text-white/55">
+        {POSITION_LABELS[p.position] ?? p.position}
+      </div>
+
+      {/* Name */}
+      <div className={`flex-1 text-sm font-semibold ${isBench ? "text-white/55" : "text-white/85"}`}>
+        {p.firstName[0]}. {p.lastName}
+      </div>
+
+      {/* Ratings */}
+      <div className="flex shrink-0 gap-2">
+        {ratings.map(({ label, value }) => (
+          <div key={label} className="hidden min-w-[40px] flex-col items-center sm:flex">
+            <span className="text-[9px] font-semibold uppercase tracking-[0.25em] text-white/30">
+              {label}
+            </span>
+            <span className={`mt-0.5 text-xs font-black ${value >= 80 ? "text-cyan-300" : value >= 65 ? "text-white/80" : "text-white/45"}`}>
+              {value}
+            </span>
+          </div>
+        ))}
+        {/* Condensed overall for mobile */}
+        <div className="flex flex-col items-center sm:hidden">
+          <span className="text-[9px] font-semibold uppercase tracking-[0.25em] text-white/30">OVR</span>
+          <span className="mt-0.5 text-xs font-black text-white/80">
+            {Math.round((p.ratings.speed + p.ratings.shooting + p.ratings.defense + p.ratings.rebounding) / 4)}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Season Stats Panel
+// ---------------------------------------------------------------------------
+
+interface SeasonStatsPanelProps {
+  season: Season;
+}
+
+function SeasonStatsPanel({ season }: SeasonStatsPanelProps) {
+  const { team, seasonStats, gamesPlayedWithStats } = season;
+  const gp = gamesPlayedWithStats;
+  if (gp === 0) return null;
+
+  const lineupIds = new Set(team.lineup);
+  const starters = team.lineup
+    .map((id) => team.roster.find((p) => p.id === id))
+    .filter((p): p is Player => p !== undefined);
+  const bench = team.roster.filter((p) => !lineupIds.has(p.id) && !!seasonStats[p.id]);
+  const allPlayers = [...starters, ...bench];
+
+  const avg = (n: number) => gp > 0 ? (n / gp).toFixed(1) : "—";
+
+  const COL = "px-2 py-1.5 text-center text-[11px] font-mono";
+  const HDR = `${COL} text-white/35 font-semibold tracking-wider`;
+
+  return (
+    <div className="rounded-[36px] border border-white/10 bg-[rgba(6,14,23,0.82)] px-6 py-7 sm:px-8">
+      <div className="flex items-baseline gap-3">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.4em] text-white/42">
+          Season Stats
+        </div>
+        <div className="text-[10px] text-white/28">
+          {gp} game{gp !== 1 ? "s" : ""} · per-game averages
+        </div>
+      </div>
+
+      <div className="mt-4 overflow-x-auto">
+        <table className="w-full min-w-[480px] border-collapse">
+          <thead>
+            <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+              <th className={`${HDR} text-left pl-0`} style={{ width: "38%" }}>Player</th>
+              <th className={HDR}>PTS</th>
+              <th className={HDR}>REB</th>
+              <th className={HDR}>AST</th>
+              <th className={HDR}>STL</th>
+              <th className={HDR}>BLK</th>
+              <th className={HDR}>PF</th>
+            </tr>
+          </thead>
+          <tbody>
+            {allPlayers.map((p) => {
+              const s: PlayerGameStats = seasonStats[p.id] ?? {
+                points: 0, fieldGoalsMade: 0, fieldGoalsAttempted: 0,
+                threesMade: 0, threesAttempted: 0, freeThrowsMade: 0,
+                freeThrowsAttempted: 0, rebounds: 0, assists: 0, steals: 0,
+                turnovers: 0, blocks: 0, fouls: 0, minutesPlayed: 0,
+              };
+              const isBench = !lineupIds.has(p.id);
+              return (
+                <tr
+                  key={p.id}
+                  style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
+                >
+                  <td className="py-1.5 pl-0 text-left">
+                    <span className="text-[10px] font-mono text-white/30 mr-1.5">#{p.number}</span>
+                    <span className={`text-[11px] font-semibold ${isBench ? "text-white/50" : "text-white/80"}`}>
+                      {p.firstName[0]}. {p.lastName}
+                    </span>
+                  </td>
+                  <td className={`${COL} font-bold text-white`}>{avg(s.points)}</td>
+                  <td className={`${COL} text-white/60`}>{avg(s.rebounds)}</td>
+                  <td className={`${COL} text-white/60`}>{avg(s.assists)}</td>
+                  <td className={`${COL} text-white/60`}>{avg(s.steals)}</td>
+                  <td className={`${COL} text-white/60`}>{avg(s.blocks)}</td>
+                  <td className={`${COL} text-white/60`}>{avg(s.fouls)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 }
 
 function ScheduleGrid({ schedule, currentIndex }: ScheduleGridProps) {

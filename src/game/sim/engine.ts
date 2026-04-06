@@ -848,8 +848,16 @@ function tickBallHandler(ctx: TickContext): void {
     state._isFastBreak = false;
   }
 
+  // Coach offensive system: when the home team (user's team) has the ball and
+  // a coach offense rating is set, nudge shot frequency slightly up or down.
+  // Range: rating 0 → 0.90× (more patient), 50 → 1.00× (neutral), 100 → 1.10× (up-tempo).
+  const coachOffMult =
+    (settings.coachOffense != null && handler.teamId === "home")
+      ? 0.90 + (settings.coachOffense / 100) * 0.20
+      : 1.0;
+
   const effectiveShotChance =
-    SHOT_CHANCE_PER_SECOND * shootingBias * distFactor * shotClockPressure * fastBreakMult * dt;
+    SHOT_CHANCE_PER_SECOND * shootingBias * distFactor * shotClockPressure * fastBreakMult * coachOffMult * dt;
 
   if (state._timeSinceLastAction > PASS_INTERVAL_MIN && Math.random() < effectiveShotChance) {
     attemptShot(ctx, handler);
@@ -1112,7 +1120,14 @@ function resolveShotInFlight(ctx: TickContext): void {
       if (nearestDef.dist < 10) {
         // A 100-rated defender at 0 ft cuts make probability by 30% (multiplier 0.7);
         // effect scales linearly with defender rating and proximity.
-        const contestStrength = (nearestDef.player.ratings.defense / 100) * 0.3;
+        // Coach defensive system: the home team's (user's) coach defense rating adds a
+        // small extra contest bonus when the user's team is defending.
+        // Range: rating 0 → 0 bonus, 100 → +5% extra contest (capped at 35% total).
+        const coachDefBonus =
+          (settings.coachDefense != null && defTeam === "home")
+            ? (settings.coachDefense / 100) * 0.05
+            : 0;
+        const contestStrength = Math.min(0.35, (nearestDef.player.ratings.defense / 100) * 0.30 + coachDefBonus);
         const proxFactor = Math.max(0, 1 - nearestDef.dist / 10);
         makeProb *= 1 - contestStrength * proxFactor;
       }

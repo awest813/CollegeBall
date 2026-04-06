@@ -18,6 +18,7 @@ export default function GameMenuOverlay() {
   const cameraMode = useGameStore((s) => s.cameraMode);
   const gameSpeed = useGameStore((s) => s.gameSpeed);
   const gameContext = useGameStore((s) => s.gameContext);
+  const season = useGameStore((s) => s.season);
   const closePauseMenu = useGameStore((s) => s.closePauseMenu);
   const startExhibition = useGameStore((s) => s.startExhibition);
   const returnToMainMenu = useGameStore((s) => s.returnToMainMenu);
@@ -140,10 +141,30 @@ export default function GameMenuOverlay() {
             <div className="text-[11px] font-semibold uppercase tracking-[0.32em] text-white/45">
               Coaching Snapshot
             </div>
-            <p className="mt-3 text-sm leading-6 text-white/72">
-              Pause is built to feel like a bench huddle: keep the state visible,
-              keep the next action obvious, and get back on the floor quickly.
-            </p>
+            {gameContext === "season" && season ? (
+              <div className="mt-3 flex flex-col gap-2">
+                <div className="text-sm font-semibold text-white/80">
+                  {season.coach.firstName} {season.coach.lastName}
+                </div>
+                <div className="text-[11px] uppercase tracking-[0.28em] text-white/45">
+                  {season.team.name}
+                </div>
+                <div className="mt-1 flex gap-3 text-sm">
+                  <span className="font-black text-emerald-400">{season.record.wins}W</span>
+                  <span className="text-white/35">–</span>
+                  <span className="font-black text-red-400">{season.record.losses}L</span>
+                </div>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <CoachStatMini label="Offense" value={season.coach.offense} />
+                  <CoachStatMini label="Defense" value={season.coach.defense} />
+                </div>
+              </div>
+            ) : (
+              <p className="mt-3 text-sm leading-6 text-white/72">
+                Pause is built to feel like a bench huddle: keep the state visible,
+                keep the next action obvious, and get back on the floor quickly.
+              </p>
+            )}
           </div>
         </aside>
       </div>
@@ -196,6 +217,30 @@ function TeamPanel({ teamName, abbreviation, accent, detail }: TeamPanelProps) {
           className="h-12 w-12 rounded-full border"
           style={{ borderColor: `${accent}aa`, background: `${accent}22` }}
         />
+      </div>
+    </div>
+  );
+}
+
+interface CoachStatMiniProps {
+  label: string;
+  value: number;
+}
+
+function CoachStatMini({ label, value }: CoachStatMiniProps) {
+  return (
+    <div className="rounded-[14px] border border-white/10 bg-black/20 px-3 py-2">
+      <div className="text-[9px] font-semibold uppercase tracking-[0.28em] text-white/35">
+        {label}
+      </div>
+      <div className="mt-1 flex items-center gap-1.5">
+        <span className="text-sm font-black text-white">{value}</span>
+        <div className="h-1 flex-1 overflow-hidden rounded-full bg-white/10">
+          <div
+            className="h-full rounded-full bg-cyan-400/60"
+            style={{ width: `${value}%` }}
+          />
+        </div>
       </div>
     </div>
   );

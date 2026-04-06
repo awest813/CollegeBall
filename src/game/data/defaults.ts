@@ -122,6 +122,8 @@ export const defaultGameSettings: GameSettings = {
   doubleBonusThreshold: 10, // double bonus at 10 team fouls
   subStaminaThreshold: 25, // sub out players below 25% stamina
   homeCourtBonus: true, // home team receives a small shooting/FT advantage
+  coachOffense: 50, // neutral coach offensive system rating
+  coachDefense: 50, // neutral coach defensive system rating
 };
 
 // ---------------------------------------------------------------------------
@@ -256,5 +258,7 @@ export function createDefaultSeason(): Season {
     schedule,
     record:            { wins: 0, losses: 0 },
     currentGameIndex:  0,
+    seasonStats:       {},
+    gamesPlayedWithStats: 0,
   };
 }
