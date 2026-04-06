@@ -369,6 +369,19 @@ const STAMINA_BENCH_RECOVERY_PER_SEC = 3.0;
 /** Minimum effective stamina (players always maintain this floor). */
 const STAMINA_FLOOR = 15;
 
+// ── Coach system constants ─────────────────────────────────────────────────────
+
+/** Minimum shot-pace multiplier for the home team when coachOffense = 0 (patient offense). */
+const COACH_OFF_MIN_MULT = 0.90;
+/** Full range added to COACH_OFF_MIN_MULT as coachOffense goes from 0 → 100. */
+const COACH_OFF_RANGE = 0.20;
+/** Maximum extra defensive-contest reduction from the coach defense rating (at rating 100). */
+const COACH_DEF_BONUS_MAX = 0.05;
+/** Base defensive contest multiplier applied at full proximity with a 100-rated defender. */
+const BASE_CONTEST_MULT = 0.30;
+/** Hard cap on total defensive contest reduction (prevents make-probability from going too low). */
+const CONTEST_STRENGTH_CAP = 0.35;
+
 /**
  * Convert a speed rating (0–100) into a speed factor.
  * Rating 50 → factor 1.0; rating 0 → 0.4; rating 100 → 1.6.
@@ -853,7 +866,7 @@ function tickBallHandler(ctx: TickContext): void {
   // Range: rating 0 → 0.90× (more patient), 50 → 1.00× (neutral), 100 → 1.10× (up-tempo).
   const coachOffMult =
     (settings.coachOffense != null && handler.teamId === "home")
-      ? 0.90 + (settings.coachOffense / 100) * 0.20
+      ? COACH_OFF_MIN_MULT + (settings.coachOffense / 100) * COACH_OFF_RANGE
       : 1.0;
 
   const effectiveShotChance =
@@ -1125,9 +1138,9 @@ function resolveShotInFlight(ctx: TickContext): void {
         // Range: rating 0 → 0 bonus, 100 → +5% extra contest (capped at 35% total).
         const coachDefBonus =
           (settings.coachDefense != null && defTeam === "home")
-            ? (settings.coachDefense / 100) * 0.05
+            ? (settings.coachDefense / 100) * COACH_DEF_BONUS_MAX
             : 0;
-        const contestStrength = Math.min(0.35, (nearestDef.player.ratings.defense / 100) * 0.30 + coachDefBonus);
+        const contestStrength = Math.min(CONTEST_STRENGTH_CAP, (nearestDef.player.ratings.defense / 100) * BASE_CONTEST_MULT + coachDefBonus);
         const proxFactor = Math.max(0, 1 - nearestDef.dist / 10);
         makeProb *= 1 - contestStrength * proxFactor;
       }
