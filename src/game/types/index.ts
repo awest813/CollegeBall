@@ -242,6 +242,18 @@ export interface GameSettings {
    * percentage to simulate home-court crowd energy and familiarity.
    */
   homeCourtBonus: boolean;
+  /**
+   * Head coach's offensive system rating (0–100).
+   * Higher values nudge the home team toward quicker shot decisions and an up-tempo
+   * pace.  Defaults to 50 (neutral).
+   */
+  coachOffense?: number;
+  /**
+   * Head coach's defensive system rating (0–100).
+   * Higher values boost the home team's defensive contest effectiveness.
+   * Defaults to 50 (neutral).
+   */
+  coachDefense?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -307,6 +319,13 @@ export interface Season {
   record: SeasonRecord;
   /** Index into schedule of the next unplayed game. Equals schedule.length when the season is complete. */
   currentGameIndex: number;
+  /**
+   * Cumulative per-player stats accumulated from games played through the 3D engine.
+   * Keyed by player id — same shape as PlayerGameStats but totalled across all games.
+   */
+  seasonStats: Record<string, PlayerGameStats>;
+  /** Number of games fully played through the 3D engine (used to compute per-game averages). */
+  gamesPlayedWithStats: number;
 }
 
 // ---------------------------------------------------------------------------
