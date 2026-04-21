@@ -38,6 +38,19 @@ import {
   prospectToPlayer,
 } from "../game/data/defaults";
 
+// ---------------------------------------------------------------------------
+// Recruiting constants (ported from CFHC's off-season flow)
+// ---------------------------------------------------------------------------
+
+/** Minimum number of prospects offered slots each recruiting cycle. */
+const MIN_RECRUITING_CLASS_SIZE = 3;
+/** How many extra prospects to add to the pool beyond the open-spots count. */
+const RECRUITING_POOL_BUFFER = 12;
+/** Minimum scouting points a coach with any recruiting rating will have. */
+const MIN_SCOUTING_POINTS = 3;
+/** Divisor mapping coach recruiting rating (0–100) → scouting points. */
+const RECRUITING_TO_SCOUTING_DIVISOR = 15;
+
 export interface GameStore {
   // ---- Navigation ----
   screen: Screen;
@@ -467,10 +480,6 @@ export const useGameStore = create<GameStore>((set) => ({
       };
     }),
 
-  // ---------------------------------------------------------------------------
-  // Season advancement + recruiting (ported from CFHC's off-season flow)
-  // ---------------------------------------------------------------------------
-
   /**
    * Advance to the next season:
    *  1. Graduate all seniors (year = 4) from the roster.
@@ -495,16 +504,16 @@ export const useGameStore = create<GameStore>((set) => ({
         .filter((p): p is NonNullable<typeof p> => p !== null);
 
       const graduatedCount = team.roster.length - returnees.length;
-      const openSpots = Math.max(graduatedCount, 3); // always recruit at least 3
+      const openSpots = Math.max(graduatedCount, MIN_RECRUITING_CLASS_SIZE);
 
       // 3: Update prestige — wins above .500 raise it, losses lower it
       const prestigeDelta = Math.round((winPct - 0.5) * 10);
       const newPrestige = Math.max(30, Math.min(99, season.prestige + prestigeDelta));
 
       // 4: Generate prospects. Scouting points scale with coach's recruiting rating.
-      const prospectCount = openSpots + 12; // extra pool to give player options
+      const prospectCount = openSpots + RECRUITING_POOL_BUFFER;
       const newProspects = generateProspects(newPrestige, coach.recruiting, prospectCount);
-      const scoutingPoints = Math.max(3, Math.round(coach.recruiting / 15));
+      const scoutingPoints = Math.max(MIN_SCOUTING_POINTS, Math.round(coach.recruiting / RECRUITING_TO_SCOUTING_DIVISOR));
 
       // Update lineup to only include returnees (trim if needed)
       const returneeIds = new Set(returnees.map((p) => p.id));

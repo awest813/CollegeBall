@@ -349,6 +349,18 @@ export function createDefaultSeason(): Season {
 const REGIONS = ["West", "Midwest", "East", "South"] as const;
 const POSITIONS: PlayerPosition[] = ["PG", "SG", "SF", "PF", "C"];
 
+// Prospect rating thresholds
+const ELITE_PROSPECT_MIN_RATING = 84;
+const ELITE_PROSPECT_MAX_RATING = 96;
+const STANDARD_PROSPECT_MIN_RATING = 52;
+const STANDARD_PROSPECT_MAX_RATING = 83;
+
+// Recruiting class sizing
+const MIN_RECRUITING_CLASS_SIZE = 3;
+const RECRUITING_POOL_BUFFER = 12;
+const MIN_SCOUTING_POINTS = 3;
+const RECRUITING_TO_SCOUTING_DIVISOR = 15;
+
 /**
  * Generate a pool of incoming-class prospects for the off-season recruiting phase.
  *
@@ -387,14 +399,14 @@ export function generateProspects(
     }
     const position = POSITIONS[posIdx];
 
-    // Rating: elite prospects (85–95) are rare; most are 55–80
-    // Recruiting rating and prestige increase the chance of top prospects appearing
+    // Rating: elite prospects (ELITE range) are rare; most fall in the STANDARD range.
+    // Recruiting rating and prestige increase the chance of top prospects appearing.
     const eliteChance = 0.05 + prestigeFactor * 0.15 + recruitingFactor * 0.10;
     let rating: number;
     if (Math.random() < eliteChance) {
-      rating = rand(84, 96);
+      rating = rand(ELITE_PROSPECT_MIN_RATING, ELITE_PROSPECT_MAX_RATING);
     } else {
-      rating = rand(52, 83);
+      rating = rand(STANDARD_PROSPECT_MIN_RATING, STANDARD_PROSPECT_MAX_RATING);
     }
 
     const region = REGIONS[Math.floor(Math.random() * REGIONS.length)];
@@ -405,7 +417,7 @@ export function generateProspects(
     const interestLevel = Math.max(0.10, Math.min(0.95, baseInterest - ratingPenalty + (Math.random() - 0.5) * 0.20));
 
     prospects.push({
-      id: `prospect_${Date.now()}_${i}`,
+      id: uid(),
       firstName: randomFirstName(),
       lastName: randomLastName(),
       position,
