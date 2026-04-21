@@ -26,7 +26,8 @@ function makeTeam(
     firstName: "Test",
     lastName: `Player${i}`,
     number: i + 1,
-    position: positions?.[i] ?? "PG",
+    position: positions?.[i] ?? "PG" as PlayerPosition,
+    year: 2 as const,
     ratings: {
       speed: 60,
       shooting: 60,
