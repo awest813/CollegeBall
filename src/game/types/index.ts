@@ -44,6 +44,12 @@ export interface Player {
   number: number;
   position: PlayerPosition;
   ratings: PlayerRatings;
+  /**
+   * Academic year: 1 = Freshman, 2 = Sophomore, 3 = Junior, 4 = Senior.
+   * Adapted from CFHC's player year system. Seniors graduate at season end
+   * and are replaced via recruiting.
+   */
+  year: 1 | 2 | 3 | 4;
 }
 
 export type PlayerPosition = "PG" | "SG" | "SF" | "PF" | "C";
@@ -222,7 +228,7 @@ export interface SimEvent {
 // Game State (UI-level)
 // ---------------------------------------------------------------------------
 
-export type Screen = "menu" | "game" | "season";
+export type Screen = "menu" | "game" | "season" | "recruiting";
 
 export type GameSpeed = 1 | 2 | 4;
 
@@ -300,6 +306,13 @@ export interface SeasonGame {
   userScore: number | null;
   /** Opponent's final score; null until played. */
   opponentScore: number | null;
+  /**
+   * Game type from CFHC's schedule model:
+   *   "non-conf" = out-of-conference game
+   *   "conf"     = regular conference game
+   *   "conf-title" = conference championship game
+   */
+  gameType: "non-conf" | "conf" | "conf-title";
 }
 
 /** Cumulative win/loss record for the season. */
@@ -326,6 +339,66 @@ export interface Season {
   seasonStats: Record<string, PlayerGameStats>;
   /** Number of games fully played through the 3D engine (used to compute per-game averages). */
   gamesPlayedWithStats: number;
+  /**
+   * Conference win–loss record (conf games only).
+   * Ported from CFHC's conference-schedule tracking.
+   */
+  conferenceRecord: SeasonRecord;
+  /**
+   * Program prestige (0–100). Influences recruiting quality and opponent strength.
+   * Inspired by CFHC's team-prestige system.
+   */
+  prestige: number;
+  /**
+   * Name of the user's conference (e.g. "Big East").
+   * Used to label conference games in the schedule.
+   */
+  conferenceName: string;
+}
+
+// ---------------------------------------------------------------------------
+// Recruiting
+// ---------------------------------------------------------------------------
+
+/**
+ * An incoming-class prospect available during the off-season recruiting window.
+ * Ported from CFHC's RecruitingPlayerRecord concept.
+ *
+ * Prospects are freshmen (year = 1) with hidden or partially revealed ratings.
+ * The coach's `recruiting` rating influences how many high-quality prospects
+ * are generated, and the program's `prestige` affects their willingness to commit.
+ */
+export interface Prospect {
+  id: string;
+  firstName: string;
+  lastName: string;
+  position: PlayerPosition;
+  /** 0–100 composite rating (hidden until scouted). */
+  rating: number;
+  /**
+   * Whether the user has spent a scouting point on this prospect.
+   * Scouted prospects display their true rating; unscouted show only a letter grade.
+   */
+  scouted: boolean;
+  /** Geographic region of origin — affects distance-based recruiting pitch. */
+  region: "West" | "Midwest" | "East" | "South";
+  /** Likelihood (0–1) that the prospect commits when offered a scholarship. */
+  interestLevel: number;
+  /** Whether the prospect has been offered a scholarship. */
+  offered: boolean;
+  /** Whether the prospect has committed to the user's program. */
+  committed: boolean;
+}
+
+/** Letter grade derived from a prospect's rating (if not yet scouted). */
+export function prospectGrade(rating: number): "A+" | "A" | "B+" | "B" | "C+" | "C" | "D" {
+  if (rating >= 90) return "A+";
+  if (rating >= 82) return "A";
+  if (rating >= 74) return "B+";
+  if (rating >= 66) return "B";
+  if (rating >= 58) return "C+";
+  if (rating >= 50) return "C";
+  return "D";
 }
 
 // ---------------------------------------------------------------------------

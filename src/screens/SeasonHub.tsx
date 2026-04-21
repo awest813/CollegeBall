@@ -14,6 +14,7 @@ export default function SeasonHub() {
   const playSeasonGame     = useGameStore((s) => s.playSeasonGame);
   const simulateSeasonGame = useGameStore((s) => s.simulateSeasonGame);
   const startSeason        = useGameStore((s) => s.startSeason);
+  const advanceSeason      = useGameStore((s) => s.advanceSeason);
   const setScreen          = useGameStore((s) => s.setScreen);
 
   if (!season) {
@@ -62,12 +63,18 @@ export default function SeasonHub() {
           {/* ---- Coach + Record ---- */}
           <div className="grid gap-5 sm:grid-cols-2">
             <CoachCard coach={season.coach} season={season} />
-            <RecordCard record={season.record} gamesPlayed={season.currentGameIndex} total={season.schedule.length} />
+            <RecordCard
+              record={season.record}
+              conferenceRecord={season.conferenceRecord}
+              conferenceName={season.conferenceName}
+              gamesPlayed={season.currentGameIndex}
+              total={season.schedule.length}
+            />
           </div>
 
           {/* ---- Next game or season-complete banner ---- */}
           {isSeasonComplete ? (
-            <SeasonCompleteCard record={season.record} onNewSeason={startSeason} />
+            <SeasonCompleteCard record={season.record} onNewSeason={startSeason} onAdvanceSeason={advanceSeason} />
           ) : (
             nextGame && (
               <NextGameCard
@@ -154,11 +161,13 @@ function CoachAttr({ label, value }: { label: string; value: number }) {
 
 interface RecordCardProps {
   record: SeasonRecord;
+  conferenceRecord: SeasonRecord;
+  conferenceName: string;
   gamesPlayed: number;
   total: number;
 }
 
-function RecordCard({ record, gamesPlayed, total }: RecordCardProps) {
+function RecordCard({ record, conferenceRecord, conferenceName, gamesPlayed, total }: RecordCardProps) {
   const pct = gamesPlayed > 0
     ? Math.round((record.wins / gamesPlayed) * 1000) / 10
     : 0;
@@ -182,21 +191,21 @@ function RecordCard({ record, gamesPlayed, total }: RecordCardProps) {
           )}
         </div>
 
-        <div className="mt-6 grid grid-cols-2 gap-3">
+        <div className="mt-4 grid grid-cols-2 gap-3">
           <div className="rounded-[20px] border border-white/10 bg-black/18 px-4 py-3 backdrop-blur-sm">
             <div className="text-[10px] font-semibold uppercase tracking-[0.3em] text-white/38">
-              Wins
+              Overall W–L
             </div>
-            <div className="mt-1.5 text-2xl font-black text-emerald-400">
-              {record.wins}
+            <div className="mt-1.5 text-xl font-black text-white">
+              {record.wins}–{record.losses}
             </div>
           </div>
-          <div className="rounded-[20px] border border-white/10 bg-black/18 px-4 py-3 backdrop-blur-sm">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.3em] text-white/38">
-              Losses
+          <div className="rounded-[20px] border border-cyan-300/15 bg-cyan-300/5 px-4 py-3 backdrop-blur-sm">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.3em] text-cyan-200/55">
+              {conferenceName}
             </div>
-            <div className="mt-1.5 text-2xl font-black text-red-400">
-              {record.losses}
+            <div className="mt-1.5 text-xl font-black text-cyan-100">
+              {conferenceRecord.wins}–{conferenceRecord.losses}
             </div>
           </div>
         </div>
@@ -260,9 +269,10 @@ function NextGameCard({ game, onPlay, onSim }: NextGameCardProps) {
 interface SeasonCompleteCardProps {
   record: SeasonRecord;
   onNewSeason: () => void;
+  onAdvanceSeason: () => void;
 }
 
-function SeasonCompleteCard({ record, onNewSeason }: SeasonCompleteCardProps) {
+function SeasonCompleteCard({ record, onNewSeason, onAdvanceSeason }: SeasonCompleteCardProps) {
   const total = record.wins + record.losses;
   const pct   = total > 0 ? Math.round((record.wins / total) * 100) : 0;
 
@@ -281,12 +291,20 @@ function SeasonCompleteCard({ record, onNewSeason }: SeasonCompleteCardProps) {
           ? "Solid year. Keep building the program."
           : "Tough year, but every lesson counts."}
       </p>
-      <button
-        onClick={onNewSeason}
-        className="mt-6 rounded-[22px] bg-emerald-400 px-7 py-3.5 text-sm font-black uppercase tracking-[0.2em] text-slate-950 transition hover:bg-emerald-300 active:scale-95"
-      >
-        New Season
-      </button>
+      <div className="mt-6 flex flex-wrap gap-3">
+        <button
+          onClick={onAdvanceSeason}
+          className="rounded-[22px] bg-emerald-400 px-7 py-3.5 text-sm font-black uppercase tracking-[0.2em] text-slate-950 transition hover:bg-emerald-300 active:scale-95"
+        >
+          Advance Season &amp; Recruit
+        </button>
+        <button
+          onClick={onNewSeason}
+          className="rounded-[22px] border border-white/12 bg-white/6 px-7 py-3.5 text-sm font-semibold uppercase tracking-[0.18em] text-white/70 transition hover:bg-white/12 active:scale-95"
+        >
+          New Season (Reset)
+        </button>
+      </div>
     </div>
   );
 }
@@ -364,6 +382,9 @@ function RosterRow({ player: p, isBench = false }: RosterRowProps) {
     { label: "REB", value: p.ratings.rebounding },
   ];
 
+  const yearLabels: Record<1 | 2 | 3 | 4, string> = { 1: "Fr", 2: "So", 3: "Jr", 4: "Sr" };
+  const yearLabel = yearLabels[p.year] ?? "";
+
   return (
     <div
       className={`flex items-center gap-3 rounded-[20px] border px-4 py-3 ${
@@ -384,6 +405,19 @@ function RosterRow({ player: p, isBench = false }: RosterRowProps) {
       <div className={`flex-1 text-sm font-semibold ${isBench ? "text-white/55" : "text-white/85"}`}>
         {p.firstName[0]}. {p.lastName}
       </div>
+
+      {/* Year badge (from CFHC player year system: Fr/So/Jr/Sr) */}
+      {yearLabel && (
+        <div className={`hidden shrink-0 rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.2em] sm:block ${
+          p.year === 4
+            ? "border border-amber-200/20 bg-amber-300/10 text-amber-200/70"
+            : p.year === 1
+            ? "border border-cyan-200/20 bg-cyan-300/10 text-cyan-200/70"
+            : "border border-white/10 bg-white/5 text-white/40"
+        }`}>
+          {yearLabel}
+        </div>
+      )}
 
       {/* Ratings */}
       <div className="flex shrink-0 gap-2">
@@ -533,6 +567,12 @@ function ScheduleRow({ game, isNext, isPast }: ScheduleRowProps) {
     isNext                 ? "Next" :
     "–";
 
+  // Game type badge (from CFHC's conf / non-conf / conf-title model)
+  const gameTypeBadge =
+    game.gameType === "conf-title" ? { label: "Title", cls: "border-amber-200/25 bg-amber-300/10 text-amber-200/80" } :
+    game.gameType === "conf"       ? { label: "Conf",  cls: "border-cyan-200/20 bg-cyan-300/8 text-cyan-200/65" } :
+    { label: "OOC", cls: "border-white/10 bg-white/5 text-white/40" };
+
   return (
     <div
       className={`flex items-center gap-4 rounded-[20px] border px-5 py-3.5 transition ${
@@ -551,6 +591,11 @@ function ScheduleRow({ game, isNext, isPast }: ScheduleRowProps) {
         className={`h-2 w-2 shrink-0 rounded-full ${game.isHome ? "bg-cyan-400/60" : "bg-white/20"}`}
         title={game.isHome ? "Home" : "Away"}
       />
+
+      {/* Game type label (Conference / OOC / Title) */}
+      <div className={`hidden shrink-0 rounded-md border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.18em] sm:block ${gameTypeBadge.cls}`}>
+        {gameTypeBadge.label}
+      </div>
 
       {/* Opponent name */}
       <div className="flex-1 text-sm font-semibold text-white/80">

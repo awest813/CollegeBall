@@ -13,7 +13,9 @@ import type {
   SeasonOpponent,
   SeasonGame,
   Season,
+  Prospect,
 } from "../types";
+import { randomFirstName, randomLastName } from "./names";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -51,17 +53,63 @@ function makeRatings(pos: PlayerPosition): import("../types").PlayerRatings {
   };
 }
 
+/**
+ * Create a player with ratings scaled to a given overall quality level (60–90).
+ * Ported from CFHC's `makeScaledRatings` logic.
+ */
+function makeScaledRatings(pos: PlayerPosition, overall: number): import("../types").PlayerRatings {
+  const factor = Math.max(0, Math.min(1, (overall - 60) / 30));
+  const r = RATING_RANGES[pos];
+  const pick = (range: [number, number]): number => {
+    const lo = range[0];
+    const hi = range[1];
+    const center = lo + (hi - lo) * factor;
+    const spread = (hi - lo) * 0.25;
+    return Math.round(Math.max(lo, Math.min(hi, center + (Math.random() - 0.5) * spread * 2)));
+  };
+  return {
+    speed:      pick(r.speed),
+    shooting:   pick(r.shooting),
+    passing:    pick(r.passing),
+    defense:    pick(r.defense),
+    rebounding: pick(r.rebounding),
+    endurance:  pick(r.endurance),
+  };
+}
+
+/**
+ * Assign a year (1–4) to a player slot based on its position in the roster.
+ * Starters tend to be upperclassmen; bench players are younger.
+ * Adapted from CFHC's year-distribution logic.
+ */
+function assignYear(slotIndex: number): 1 | 2 | 3 | 4 {
+  // Slots 0-4: starters — weighted toward 2–4 (So/Jr/Sr)
+  // Slots 5+: bench — weighted toward 1–3 (Fr/So/Jr)
+  if (slotIndex < 5) {
+    const roll = Math.random();
+    if (roll < 0.20) return 2;
+    if (roll < 0.55) return 3;
+    return 4;
+  } else {
+    const roll = Math.random();
+    if (roll < 0.40) return 1;
+    if (roll < 0.75) return 2;
+    return 3;
+  }
+}
+
 function makePlayers(
   _teamId: string,
   names: [string, string, PlayerPosition, number][]
 ): Player[] {
-  return names.map(([first, last, pos, num]) => ({
+  return names.map(([first, last, pos, num], idx) => ({
     id: uid(),
     firstName: first,
     lastName: last,
     number: num,
     position: pos,
     ratings: makeRatings(pos),
+    year: assignYear(idx),
   }));
 }
 
@@ -154,43 +202,25 @@ const SEASON_OPPONENTS: SeasonOpponent[] = [
   { id: "opp_10", name: "Pinewood Panthers", abbreviation: "PWP", primaryColor: "#1f2937", secondaryColor: "#10b981", overall: 65 },
 ];
 
-/** Name pools for generating opponent rosters. */
-const OPP_FIRST_NAMES = [
-  "Marcus", "Jordan", "Anthony", "Kevin", "James", "Michael", "David",
-  "Ryan", "Justin", "Brandon", "Darius", "Isaiah", "Caleb", "Noah", "Jaden",
-];
-const OPP_LAST_NAMES = [
-  "Johnson", "Williams", "Brown", "Davis", "Carter", "Harris", "Martin",
-  "Clark", "Walker", "Thompson", "Wilson", "Taylor", "Lee", "Young", "Allen",
-];
-
 /**
- * Generate player ratings scaled to an opponent's overall quality.
- * `overall` of 60 produces near-minimum ratings; 90 produces near-maximum.
+ * Conference opponent pool — the eight teams in the user's conference.
+ * Adapted from CFHC's conference scheduling system.
+ * These teams appear as "Conference" games in the 13-game schedule.
  */
-function makeScaledRatings(pos: PlayerPosition, overall: number): import("../types").PlayerRatings {
-  const factor = Math.max(0, Math.min(1, (overall - 60) / 30));
-  const r = RATING_RANGES[pos];
-  const pick = (range: [number, number]): number => {
-    const lo = range[0];
-    const hi = range[1];
-    const center = lo + (hi - lo) * factor;
-    const spread = (hi - lo) * 0.25;
-    return Math.round(Math.max(lo, Math.min(hi, center + (Math.random() - 0.5) * spread * 2)));
-  };
-  return {
-    speed:      pick(r.speed),
-    shooting:   pick(r.shooting),
-    passing:    pick(r.passing),
-    defense:    pick(r.defense),
-    rebounding: pick(r.rebounding),
-    endurance:  pick(r.endurance),
-  };
-}
+const CONF_OPPONENTS: SeasonOpponent[] = [
+  { id: "conf_1", name: "Bridgeport Huskies",  abbreviation: "BPH", primaryColor: "#1e3a8a", secondaryColor: "#f8fafc", overall: 72 },
+  { id: "conf_2", name: "Hartford Colonials",  abbreviation: "HTC", primaryColor: "#7c2d12", secondaryColor: "#fef3c7", overall: 76 },
+  { id: "conf_3", name: "New Haven Knights",   abbreviation: "NHK", primaryColor: "#064e3b", secondaryColor: "#d1fae5", overall: 74 },
+  { id: "conf_4", name: "Providence Friars",   abbreviation: "PRV", primaryColor: "#1c1917", secondaryColor: "#f1f5f9", overall: 79 },
+  { id: "conf_5", name: "Kingston Rams",       abbreviation: "KGR", primaryColor: "#7c3aed", secondaryColor: "#ede9fe", overall: 70 },
+  { id: "conf_6", name: "Albany Monarchs",     abbreviation: "ALB", primaryColor: "#065f46", secondaryColor: "#d1fae5", overall: 77 },
+  { id: "conf_7", name: "Lowell Chargers",     abbreviation: "LWC", primaryColor: "#c2410c", secondaryColor: "#fef3c7", overall: 73 },
+  { id: "conf_8", name: "Burlington Bears",    abbreviation: "BLB", primaryColor: "#0369a1", secondaryColor: "#f0f9ff", overall: 68 },
+];
 
 /**
  * Generate a full Team for a season opponent.
- * Called just before the game starts so ratings are freshly randomised.
+ * Now uses the CFHC-derived name database for realistic player names.
  */
 export function makeOpponentTeam(opponent: SeasonOpponent): Team {
   const slots: [PlayerPosition, number][] = [
@@ -201,21 +231,25 @@ export function makeOpponentTeam(opponent: SeasonOpponent): Team {
   const usedFirst = new Set<string>();
   const usedLast  = new Set<string>();
 
-  const pickName = (pool: string[], used: Set<string>): string => {
-    const available = pool.filter((n) => !used.has(n));
-    const source = available.length > 0 ? available : pool;
-    const name = source[Math.floor(Math.random() * source.length)];
+  const pickUniqueName = (used: Set<string>, picker: () => string): string => {
+    let name = picker();
+    let attempts = 0;
+    while (used.has(name) && attempts < 20) {
+      name = picker();
+      attempts++;
+    }
     used.add(name);
     return name;
   };
 
-  const players: Player[] = slots.map(([pos, num]) => ({
+  const players: Player[] = slots.map(([pos, num], idx) => ({
     id: uid(),
-    firstName: pickName(OPP_FIRST_NAMES, usedFirst),
-    lastName:  pickName(OPP_LAST_NAMES,  usedLast),
+    firstName: pickUniqueName(usedFirst, randomFirstName),
+    lastName:  pickUniqueName(usedLast,  randomLastName),
     number:    num,
     position:  pos,
     ratings:   makeScaledRatings(pos, opponent.overall),
+    year:      assignYear(idx),
   }));
 
   return {
@@ -239,17 +273,59 @@ export function computeTeamOverall(team: Team): number {
   return Math.round(sum / n);
 }
 
-/** Build a fresh 10-game default season. */
+/**
+ * Build a fresh 13-game season schedule modelled after CFHC's schedule system:
+ *   - 4 non-conference games (weeks 1–4, against the "OOC" pool)
+ *   - 8 conference games (weeks 5–12, against conf opponents with alternating home/away)
+ *   - 1 conference title game (week 13, neutral site vs the best conf opponent)
+ *
+ * This mirrors CFHC's Conference / OOC / Conference-Championship model.
+ */
 export function createDefaultSeason(): Season {
-  const schedule: SeasonGame[] = SEASON_OPPONENTS.map((opp, i) => ({
-    id:           `game_${i + 1}`,
-    week:         i + 1,
-    isHome:       i % 2 === 0, // alternate home / away
-    opponent:     opp,
+  const schedule: SeasonGame[] = [];
+  let week = 1;
+
+  // Non-conference games (weeks 1–4)
+  const nonConfOpponents = SEASON_OPPONENTS.slice(0, 4);
+  nonConfOpponents.forEach((opp, i) => {
+    schedule.push({
+      id:           `game_nc_${i + 1}`,
+      week:         week++,
+      isHome:       i % 2 === 0,
+      opponent:     opp,
+      result:       null,
+      userScore:    null,
+      opponentScore: null,
+      gameType:     "non-conf",
+    });
+  });
+
+  // Conference games (weeks 5–12)
+  CONF_OPPONENTS.forEach((opp, i) => {
+    schedule.push({
+      id:           `game_conf_${i + 1}`,
+      week:         week++,
+      isHome:       i % 2 === 0,
+      opponent:     opp,
+      result:       null,
+      userScore:    null,
+      opponentScore: null,
+      gameType:     "conf",
+    });
+  });
+
+  // Conference title game (week 13) — vs the strongest conference opponent
+  const titleOpponent = [...CONF_OPPONENTS].sort((a, b) => b.overall - a.overall)[0];
+  schedule.push({
+    id:           "game_conf_title",
+    week:         week,
+    isHome:       false, // neutral site
+    opponent:     titleOpponent,
     result:       null,
     userScore:    null,
     opponentScore: null,
-  }));
+    gameType:     "conf-title",
+  });
 
   return {
     year:              2025,
@@ -257,8 +333,146 @@ export function createDefaultSeason(): Season {
     team:              { ...defaultHomeTeam, roster: [...defaultHomeTeam.roster] },
     schedule,
     record:            { wins: 0, losses: 0 },
+    conferenceRecord:  { wins: 0, losses: 0 },
+    prestige:          60,
+    conferenceName:    "Big East",
     currentGameIndex:  0,
     seasonStats:       {},
     gamesPlayedWithStats: 0,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Recruiting: off-season prospect generation
+// ---------------------------------------------------------------------------
+
+const REGIONS = ["West", "Midwest", "East", "South"] as const;
+const POSITIONS: PlayerPosition[] = ["PG", "SG", "SF", "PF", "C"];
+
+/**
+ * Generate a pool of incoming-class prospects for the off-season recruiting phase.
+ *
+ * Concept directly ported from CFHC's RecruitingSessionData:
+ *  - Prospects are spread across positions and regions
+ *  - Ratings are normally distributed with higher-prestige programs seeing more
+ *    elite prospects in their pool
+ *  - Scouted = false by default; costs a scouting point to reveal true rating
+ *  - interestLevel is affected by the program's prestige vs prospect quality
+ *
+ * @param prestige  Program prestige (0–100) from the Season state
+ * @param recruiting  Coach recruiting rating (0–100) from the Coach profile
+ * @param count     Number of prospects to generate (default 30)
+ */
+export function generateProspects(
+  prestige: number,
+  recruiting: number,
+  count = 30
+): Prospect[] {
+  const prospects: Prospect[] = [];
+  const prestigeFactor = prestige / 100;
+  const recruitingFactor = recruiting / 100;
+
+  // Positions in proportion similar to a college basketball roster need:
+  // PG:SG:SF:PF:C ≈ 2:2:2:2:1 per 9 prospects
+  const positionWeights = [2, 2, 2, 2, 1]; // PG SG SF PF C
+
+  for (let i = 0; i < count; i++) {
+    // Pick position weighted by need
+    const totalWeight = positionWeights.reduce((a, b) => a + b, 0);
+    let roll = Math.random() * totalWeight;
+    let posIdx = 0;
+    for (let j = 0; j < positionWeights.length; j++) {
+      roll -= positionWeights[j];
+      if (roll <= 0) { posIdx = j; break; }
+    }
+    const position = POSITIONS[posIdx];
+
+    // Rating: elite prospects (85–95) are rare; most are 55–80
+    // Recruiting rating and prestige increase the chance of top prospects appearing
+    const eliteChance = 0.05 + prestigeFactor * 0.15 + recruitingFactor * 0.10;
+    let rating: number;
+    if (Math.random() < eliteChance) {
+      rating = rand(84, 96);
+    } else {
+      rating = rand(52, 83);
+    }
+
+    const region = REGIONS[Math.floor(Math.random() * REGIONS.length)];
+
+    // Interest level: higher prestige = more interest, attenuated by rating mismatch
+    const baseInterest = 0.35 + prestigeFactor * 0.40;
+    const ratingPenalty = Math.max(0, (rating - 75) / 100) * 0.25;
+    const interestLevel = Math.max(0.10, Math.min(0.95, baseInterest - ratingPenalty + (Math.random() - 0.5) * 0.20));
+
+    prospects.push({
+      id: `prospect_${Date.now()}_${i}`,
+      firstName: randomFirstName(),
+      lastName: randomLastName(),
+      position,
+      rating,
+      scouted: false,
+      region,
+      interestLevel,
+      offered: false,
+      committed: false,
+    });
+  }
+
+  // Sort: unsorted by default to simulate a "big board" feel — user must discover order
+  return prospects;
+}
+
+/**
+ * Advance a player's year and apply development gains.
+ *
+ * Based on CFHC's end-of-season `advanceSeason` logic where players progress
+ * through Fr → So → Jr → Sr and receive rating improvements driven by
+ * potential and coach development rating.
+ *
+ * @returns The updated player, or null if the player has graduated (was a Senior).
+ */
+export function developAndAdvancePlayer(
+  player: Player,
+  coachDevelopment: number
+): Player | null {
+  if (player.year === 4) return null; // senior graduates
+
+  const devFactor = coachDevelopment / 100;
+
+  // Improvement is larger for younger players (higher ceiling) and
+  // tapered by the development rating — mirrors CFHC's progression model.
+  const yearFactor = (4 - player.year) / 3; // 1.0 for Fr→So, 0.33 for Jr→Sr
+  const improvementBase = Math.round(yearFactor * devFactor * 6);
+
+  const improve = (val: number): number =>
+    Math.min(99, val + improvementBase + Math.round((Math.random() - 0.3) * 3));
+
+  return {
+    ...player,
+    year: (player.year + 1) as 2 | 3 | 4,
+    ratings: {
+      speed:      improve(player.ratings.speed),
+      shooting:   improve(player.ratings.shooting),
+      passing:    improve(player.ratings.passing),
+      defense:    improve(player.ratings.defense),
+      rebounding: improve(player.ratings.rebounding),
+      endurance:  improve(player.ratings.endurance),
+    },
+  };
+}
+
+/**
+ * Convert a committed Prospect into a Player ready to join the roster.
+ * The new player is a Freshman (year = 1).
+ */
+export function prospectToPlayer(prospect: Prospect, number: number): Player {
+  return {
+    id: uid(),
+    firstName: prospect.firstName,
+    lastName: prospect.lastName,
+    number,
+    position: prospect.position,
+    year: 1,
+    ratings: makeScaledRatings(prospect.position, prospect.rating),
   };
 }

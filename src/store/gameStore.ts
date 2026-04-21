@@ -24,6 +24,7 @@ import type {
   MatchPhase,
   SimEvent,
   Season,
+  Prospect,
 } from "../game/types";
 import {
   defaultHomeTeam,
@@ -32,6 +33,9 @@ import {
   createDefaultSeason,
   makeOpponentTeam,
   computeTeamOverall,
+  generateProspects,
+  developAndAdvancePlayer,
+  prospectToPlayer,
 } from "../game/data/defaults";
 
 export interface GameStore {
@@ -98,6 +102,26 @@ export interface GameStore {
   simulateSeasonGame: () => void;
   /** Record the result of the just-finished season game and return to the season hub. */
   returnToSeasonHub: () => void;
+  /**
+   * Advance to the next season: graduate seniors, develop returning players, and
+   * enter the recruiting screen. Ported from CFHC's `advanceSeason` flow.
+   */
+  advanceSeason: () => void;
+
+  // ---- Recruiting (off-season) ----
+  /** Available incoming-class prospects for the current recruiting cycle. */
+  prospects: Prospect[];
+  /** Scouting points remaining this off-season (used to reveal prospect ratings). */
+  scoutingPoints: number;
+  /** Scout a prospect (costs 1 point; reveals true rating). */
+  scoutProspect: (prospectId: string) => void;
+  /** Offer a scholarship to a prospect. */
+  offerProspect: (prospectId: string) => void;
+  /**
+   * Finish recruiting: commit offered prospects and transition back to season hub
+   * with the refreshed roster and a new season schedule.
+   */
+  finishRecruiting: () => void;
 }
 
 export const useGameStore = create<GameStore>((set) => ({
@@ -193,6 +217,10 @@ export const useGameStore = create<GameStore>((set) => ({
   // Season / Head Coach mode initial state
   season: null,
   gameContext: "exhibition" as "exhibition" | "season",
+
+  // Recruiting initial state
+  prospects: [],
+  scoutingPoints: 0,
 
   // Actions
   startExhibition: () =>
@@ -303,17 +331,22 @@ export const useGameStore = create<GameStore>((set) => ({
       const game = season.schedule[idx];
       if (!game || game.result !== null) return state;
 
-      // Quick statistical sim based on relative team quality
+      // Quick statistical sim based on relative team quality and program prestige.
+      // Adapted from CFHC's statistical sim: prestige provides a small home-court
+      // advantage and overall quality gap determines score spread.
       const userOverall = computeTeamOverall(season.team);
+      const prestigeBonus = game.isHome ? (season.prestige / 100) * 4 : 0;
       const baseline = 63;
       const spread = 18;
       const userScore = Math.round(
-        baseline + (userOverall / 100) * spread + (Math.random() - 0.5) * 14
+        baseline + (userOverall / 100) * spread + prestigeBonus + (Math.random() - 0.5) * 14
       );
       const oppScore = Math.round(
         baseline + (game.opponent.overall / 100) * spread + (Math.random() - 0.5) * 14
       );
       const result: "win" | "loss" = userScore > oppScore ? "win" : "loss";
+
+      const isConfGame = game.gameType === "conf" || game.gameType === "conf-title";
 
       const newSchedule = season.schedule.map((g, i) =>
         i === idx ? { ...g, result, userScore, opponentScore: oppScore } : g
@@ -327,6 +360,10 @@ export const useGameStore = create<GameStore>((set) => ({
             wins:   season.record.wins   + (result === "win"  ? 1 : 0),
             losses: season.record.losses + (result === "loss" ? 1 : 0),
           },
+          conferenceRecord: isConfGame ? {
+            wins:   season.conferenceRecord.wins   + (result === "win"  ? 1 : 0),
+            losses: season.conferenceRecord.losses + (result === "loss" ? 1 : 0),
+          } : season.conferenceRecord,
           currentGameIndex: idx + 1,
         },
       };
@@ -390,6 +427,10 @@ export const useGameStore = create<GameStore>((set) => ({
               wins:   season.record.wins   + (result === "win"  ? 1 : 0),
               losses: season.record.losses + (result === "loss" ? 1 : 0),
             },
+            conferenceRecord: (game.gameType === "conf" || game.gameType === "conf-title") ? {
+              wins:   season.conferenceRecord.wins   + (result === "win"  ? 1 : 0),
+              losses: season.conferenceRecord.losses + (result === "loss" ? 1 : 0),
+            } : season.conferenceRecord,
             currentGameIndex: idx + 1,
             seasonStats: mergedStats,
             gamesPlayedWithStats: (season.gamesPlayedWithStats ?? 0) + 1,
@@ -423,6 +464,152 @@ export const useGameStore = create<GameStore>((set) => ({
         ballPosition: { x: 0, y: 0 },
         ballHeight:  0,
         shotInFlight: false,
+      };
+    }),
+
+  // ---------------------------------------------------------------------------
+  // Season advancement + recruiting (ported from CFHC's off-season flow)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Advance to the next season:
+   *  1. Graduate all seniors (year = 4) from the roster.
+   *  2. Apply development gains to all returning players (year 1–3) using the
+   *     coach's development rating — mirrors CFHC's `advanceSeason` logic.
+   *  3. Adjust program prestige based on win %.
+   *  4. Generate a fresh incoming-class prospect pool sized to fill open spots.
+   *  5. Navigate to the recruiting screen.
+   */
+  advanceSeason: () =>
+    set((state) => {
+      const { season } = state;
+      if (!season) return state;
+
+      const { coach, team, record } = season;
+      const totalGames = record.wins + record.losses;
+      const winPct = totalGames > 0 ? record.wins / totalGames : 0;
+
+      // 1 & 2: Develop and advance players; seniors return null (graduated)
+      const returnees = team.roster
+        .map((p) => developAndAdvancePlayer(p, coach.development))
+        .filter((p): p is NonNullable<typeof p> => p !== null);
+
+      const graduatedCount = team.roster.length - returnees.length;
+      const openSpots = Math.max(graduatedCount, 3); // always recruit at least 3
+
+      // 3: Update prestige — wins above .500 raise it, losses lower it
+      const prestigeDelta = Math.round((winPct - 0.5) * 10);
+      const newPrestige = Math.max(30, Math.min(99, season.prestige + prestigeDelta));
+
+      // 4: Generate prospects. Scouting points scale with coach's recruiting rating.
+      const prospectCount = openSpots + 12; // extra pool to give player options
+      const newProspects = generateProspects(newPrestige, coach.recruiting, prospectCount);
+      const scoutingPoints = Math.max(3, Math.round(coach.recruiting / 15));
+
+      // Update lineup to only include returnees (trim if needed)
+      const returneeIds = new Set(returnees.map((p) => p.id));
+      const newLineup = team.lineup
+        .filter((id) => returneeIds.has(id))
+        .slice(0, 5) as import("../game/types").Lineup;
+
+      const updatedTeam = { ...team, roster: returnees, lineup: newLineup };
+
+      return {
+        season: {
+          ...season,
+          team: updatedTeam,
+          year: season.year + 1,
+          prestige: newPrestige,
+        },
+        prospects: newProspects,
+        scoutingPoints,
+        screen: "recruiting" as Screen,
+      };
+    }),
+
+  // ---- Recruiting actions ----
+
+  scoutProspect: (prospectId: string) =>
+    set((state) => {
+      if (state.scoutingPoints <= 0) return state;
+      return {
+        prospects: state.prospects.map((p) =>
+          p.id === prospectId ? { ...p, scouted: true } : p
+        ),
+        scoutingPoints: state.scoutingPoints - 1,
+      };
+    }),
+
+  offerProspect: (prospectId: string) =>
+    set((state) => {
+      const prospect = state.prospects.find((p) => p.id === prospectId);
+      if (!prospect || prospect.offered) return state;
+
+      // Prospect commits based on interest level
+      const committed = Math.random() < prospect.interestLevel;
+      return {
+        prospects: state.prospects.map((p) =>
+          p.id === prospectId ? { ...p, offered: true, committed } : p
+        ),
+      };
+    }),
+
+  /**
+   * Finish recruiting: add committed prospects to the team roster, create a new
+   * season schedule, and navigate back to the season hub.
+   */
+  finishRecruiting: () =>
+    set((state) => {
+      const { season, prospects } = state;
+      if (!season) return state;
+
+      const committed = prospects.filter((p) => p.committed);
+      const roster = [...season.team.roster];
+
+      // Assign jersey numbers to incoming freshmen (avoid collisions)
+      const usedNumbers = new Set(roster.map((p) => p.number));
+      let nextNum = 1;
+      const getNum = (): number => {
+        while (usedNumbers.has(nextNum)) nextNum++;
+        usedNumbers.add(nextNum);
+        return nextNum++;
+      };
+
+      for (const prospect of committed) {
+        roster.push(prospectToPlayer(prospect, getNum()));
+      }
+
+      // Rebuild lineup: keep existing valid starters, then fill from new additions
+      const existingLineupIds = new Set(season.team.lineup);
+      const starters = season.team.lineup.filter((id) =>
+        roster.some((p) => p.id === id)
+      );
+      const benchPool = roster.filter((p) => !existingLineupIds.has(p.id));
+      const newLineup = [
+        ...starters,
+        ...benchPool.map((p) => p.id),
+      ].slice(0, 5) as import("../game/types").Lineup;
+
+      const updatedTeam = { ...season.team, roster, lineup: newLineup };
+
+      // Build a fresh 13-game schedule from the default template, preserving
+      // the current season's year, prestige, coach, and team.
+      const templateSchedule = createDefaultSeason().schedule;
+
+      return {
+        season: {
+          ...season,
+          team: updatedTeam,
+          schedule: templateSchedule,
+          record: { wins: 0, losses: 0 },
+          conferenceRecord: { wins: 0, losses: 0 },
+          currentGameIndex: 0,
+          seasonStats: {},
+          gamesPlayedWithStats: 0,
+        },
+        prospects: [],
+        scoutingPoints: 0,
+        screen: "season" as Screen,
       };
     }),
 }));
